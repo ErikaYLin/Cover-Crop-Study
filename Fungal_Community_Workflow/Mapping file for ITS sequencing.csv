@@ -1,0 +1,222 @@
+sample-ID,site,block,plot,trt,cover_crop
+C1,Covert,1,19,16,Crescendo Ladino Clover
+C2,Covert,2,34,16,Crescendo Ladino Clover
+C4,Covert,4,74,16,Crescendo Ladino Clover
+C5,Covert,5,113,16,Crescendo Ladino Clover
+C6,Covert,1,9,17,Winfred Brassica
+C7,Covert,2,35,17,Winfred Brassica
+C8,Covert,3,67,17,Winfred Brassica
+C9,Covert,4,89,17,Winfred Brassica
+C10,Covert,5,115,17,Winfred Brassica
+C11,Covert,1,11,18,Buckwheat
+C12,Covert,2,33,18,Buckwheat
+C13,Covert,3,49,18,Buckwheat
+C14,Covert,4,91,18,Buckwheat
+C15,Covert,5,97,18,Buckwheat
+C16,Covert,1,1,19,Field Pea
+C17,Covert,2,26,19,Field Pea
+C18,Covert,3,58,19,Field Pea
+C19,Covert,4,83,19,Field Pea
+C20,Covert,5,99,19,Field Pea
+C21,Covert,1,3,20,Mustard White
+C22,Covert,2,25,20,Mustard White
+C23,Covert,3,50,20,Mustard White
+C24,Covert,4,82,20,Mustard White
+C25,Covert,5,114,20,Mustard White
+C26,Covert,1,18,21,Buffalo Grass
+C28,Covert,3,66,21,Buffalo Grass
+C29,Covert,4,73,21,Buffalo Grass
+C30,Covert,5,105,21,Buffalo Grass
+C31,Covert,1,10,22,Phacelia
+C32,Covert,2,42,22,Phacelia
+C33,Covert,3,59,22,Phacelia
+C34,Covert,4,81,22,Phacelia
+C35,Covert,5,107,22,Phacelia
+C36,Covert,1,2,23,Turnip
+C37,Covert,2,27,23,Turnip
+C38,Covert,3,65,23,Turnip
+C39,Covert,4,75,23,Turnip
+C40,Covert,5,106,23,Turnip
+C41,Covert,1,17,24,Spring Lentil
+C42,Covert,2,41,24,Spring Lentil
+C43,Covert,3,57,24,Spring Lentil
+C44,Covert,4,90,24,Spring Lentil
+C45,Covert,5,98,24,Spring Lentil
+K1,Kalala,1,19,16,Crescendo Ladino Clover
+K2,Kalala,2,34,16,Crescendo Ladino Clover
+K3,Kalala,3,51,16,Crescendo Ladino Clover
+K4,Kalala,4,74,16,Crescendo Ladino Clover
+K5,Kalala,5,113,16,Crescendo Ladino Clover
+K6,Kalala,1,9,17,Winfred Brassica
+K7,Kalala,2,35,17,Winfred Brassica
+K8,Kalala,3,67,17,Winfred Brassica
+K9,Kalala,4,89,17,Winfred Brassica
+K10,Kalala,5,115,17,Winfred Brassica
+K11,Kalala,1,11,18,Buckwheat
+K12,Kalala,2,33,18,Buckwheat
+K13,Kalala,3,49,18,Buckwheat
+K14,Kalala,4,91,18,Buckwheat
+K15,Kalala,5,97,18,Buckwheat
+K16,Kalala,1,1,19,Field Pea
+K17,Kalala,2,26,19,Field Pea
+K18,Kalala,3,58,19,Field Pea
+K19,Kalala,4,83,19,Field Pea
+K20,Kalala,5,99,19,Field Pea
+K21,Kalala,1,3,20,Mustard White
+K22,Kalala,2,25,20,Mustard White
+K23,Kalala,3,50,20,Mustard White
+K24,Kalala,4,82,20,Mustard White
+K25,Kalala,5,114,20,Mustard White
+K26,Kalala,1,18,21,Buffalo Grass
+K27,Kalala,2,43,21,Buffalo Grass
+K28,Kalala,3,66,21,Buffalo Grass
+K29,Kalala,4,73,21,Buffalo Grass
+K30,Kalala,5,105,21,Buffalo Grass
+K31,Kalala,1,10,22,Phacelia
+K32,Kalala,2,42,22,Phacelia
+K33,Kalala,3,59,22,Phacelia
+K34,Kalala,4,81,22,Phacelia
+K35,Kalala,5,107,22,Phacelia
+K36,Kalala,1,2,23,Turnip
+K37,Kalala,2,27,23,Turnip
+K38,Kalala,3,65,23,Turnip
+K39,Kalala,4,75,23,Turnip
+K41,Kalala,1,17,24,Spring Lentil
+K42,Kalala,2,41,24,Spring Lentil
+K43,Kalala,3,57,24,Spring Lentil
+K44,Kalala,4,90,24,Spring Lentil
+K45,Kalala,5,98,24,Spring Lentil
+S1,SuRDC,1,27,16,Crescendo Ladino Clover
+S2,SuRDC,2,34,16,Crescendo Ladino Clover
+S3,SuRDC,3,4,16,Crescendo Ladino Clover
+S4,SuRDC,4,21,16,Crescendo Ladino Clover
+S9,SuRDC,4,20,17,Winfred Brassica
+S10,SuRDC,5,10,17,Winfred Brassica
+S11,SuRDC,1,25,18,Buckwheat
+S12,SuRDC,2,33,18,Buckwheat
+S13,SuRDC,3,7,18,Buckwheat
+S14,SuRDC,4,22,18,Buckwheat
+S15,SuRDC,5,15,18,Buckwheat
+S16,SuRDC,1,29,19,Field Pea
+S17,SuRDC,2,36,19,Field Pea
+S18,SuRDC,3,1,19,Field Pea
+S19,SuRDC,4,24,19,Field Pea
+S20,SuRDC,5,12,19,Field Pea
+S21,SuRDC,1,26,20,Mustard White
+S22,SuRDC,2,38,20,Mustard White
+S23,SuRDC,3,6,20,Mustard White
+S24,SuRDC,4,18,20,Mustard White
+S25,SuRDC,5,16,20,Mustard White
+S26,SuRDC,1,28,21,Buffalo Grass
+S27,SuRDC,2,40,21,Buffalo Grass
+S28,SuRDC,3,3,21,Buffalo Grass
+S29,SuRDC,4,23,21,Buffalo Grass
+S30,SuRDC,5,14,21,Buffalo Grass
+S31,SuRDC,1,32,22,Phacelia
+S32,SuRDC,2,39,22,Phacelia
+S33,SuRDC,3,8,22,Phacelia
+S34,SuRDC,4,17,22,Phacelia
+S35,SuRDC,5,11,22,Phacelia
+S36,SuRDC,1,31,24,Spring Lentil
+S37,SuRDC,2,35,24,Spring Lentil
+S38,SuRDC,3,2,24,Spring Lentil
+S39,SuRDC,4,19,24,Spring Lentil
+S40,SuRDC,5,13,24,Spring Lentil
+G45,Greenhouse,1,16,12,Alsike Clover
+G46,Greenhouse,2,10,12,Alsike Clover
+G47,Greenhouse,3,93,12,Alsike Clover
+G48,Greenhouse,4,19,12,Alsike Clover
+G37,Greenhouse,1,36,10,Birt's Foot Terifoil
+G39,Greenhouse,3,1,10,Birt's Foot Terifoil
+G40,Greenhouse,4,75,10,Birt's Foot Terifoil
+G85,Greenhouse,1,14,22,Buckwheat
+G86,Greenhouse,2,58,22,Buckwheat
+G87,Greenhouse,3,96,22,Buckwheat
+G88,Greenhouse,4,28,22,Buckwheat
+G33,Greenhouse,1,62,9,Buffalo Grass
+G34,Greenhouse,2,90,9,Buffalo Grass
+G35,Greenhouse,3,49,9,Buffalo Grass
+G36,Greenhouse,4,68,9,Buffalo Grass
+G29,Greenhouse,1,64,8,Cereal Rye
+G30,Greenhouse,2,85,8,Cereal Rye
+G31,Greenhouse,3,50,8,Cereal Rye
+G32,Greenhouse,4,70,8,Cereal Rye
+G69,Greenhouse,1,66,18,Clover Blend 
+G70,Greenhouse,2,88,18,Clover Blend 
+G71,Greenhouse,3,53,18,Clover Blend 
+G72,Greenhouse,4,29,18,Clover Blend 
+G53,Greenhouse,1,34,14,Common Vetch
+G54,Greenhouse,2,8,14,Common Vetch
+G55,Greenhouse,3,92,14,Common Vetch
+G56,Greenhouse,4,77,14,Common Vetch
+G89,Greenhouse,1,65,23,Common Yarrow
+G90,Greenhouse,2,40,23,Common Yarrow
+G91,Greenhouse,3,51,23,Common Yarrow
+G92,Greenhouse,4,30,23,Common Yarrow
+G93,Greenhouse,1,32,24,Control - No crop
+G94,Greenhouse,2,11,24,Control - No crop
+G95,Greenhouse,3,45,24,Control - No crop
+G96,Greenhouse,4,22,24,Control - No crop
+G41,Greenhouse,1,17,11,Dutch white clover
+G42,Greenhouse,2,56,11,Dutch white clover
+G43,Greenhouse,3,46,11,Dutch white clover
+G44,Greenhouse,4,78,11,Dutch white clover
+G1,Greenhouse,1,80,1,Fairway Crested wheatgrass
+G2,Greenhouse,2,41,1,Fairway Crested wheatgrass
+G3,Greenhouse,3,91,1,Fairway Crested wheatgrass
+G4,Greenhouse,4,72,1,Fairway Crested wheatgrass
+G49,Greenhouse,1,61,13,Flame Crimson Clover
+G50,Greenhouse,2,42,13,Flame Crimson Clover
+G51,Greenhouse,3,95,13,Flame Crimson Clover
+G52,Greenhouse,4,24,13,Flame Crimson Clover
+G17,Greenhouse,1,15,5,Indian Rice Grass
+G18,Greenhouse,2,60,5,Indian Rice Grass
+G19,Greenhouse,3,43,5,Indian Rice Grass
+G20,Greenhouse,4,73,5,Indian Rice Grass
+G65,Greenhouse,1,33,17,Ladino White Clover
+G66,Greenhouse,2,7,17,Ladino White Clover
+G67,Greenhouse,3,44,17,Ladino White Clover
+G68,Greenhouse,4,23,17,Ladino White Clover
+G73,Greenhouse,1,83,19,Morton winter lentil
+G74,Greenhouse,2,12,19,Morton winter lentil
+G75,Greenhouse,3,94,19,Morton winter lentil
+G76,Greenhouse,4,21,19,Morton winter lentil
+Gcontrol1,Greenhouse,0,0,0,Original soil
+Gcontrol2,Greenhouse,0,0,0,Original soil
+Gcontrol3,Greenhouse,0,0,0,Original soil
+G21,Greenhouse,1,18,6,Perennial Ryegrass
+G22,Greenhouse,2,9,6,Perennial Ryegrass
+G23,Greenhouse,3,48,6,Perennial Ryegrass
+G24,Greenhouse,4,69,6,Perennial Ryegrass
+G25,Greenhouse,1,63,7,Pubescent Wheatgrass
+G26,Greenhouse,2,87,7,Pubescent Wheatgrass
+G27,Greenhouse,3,52,7,Pubescent Wheatgrass
+G28,Greenhouse,4,26,7,Pubescent Wheatgrass
+G5,Greenhouse,1,79,2,Red Fescue
+G6,Greenhouse,2,86,2,Red Fescue
+G7,Greenhouse,3,5,2,Red Fescue
+G8,Greenhouse,4,76,2,Red Fescue
+G9,Greenhouse,1,81,3,Sheep Fescue
+G10,Greenhouse,2,59,3,Sheep Fescue
+G11,Greenhouse,3,6,3,Sheep Fescue
+G12,Greenhouse,4,27,3,Sheep Fescue
+G77,Greenhouse,1,84,20,Spring Lentil
+G78,Greenhouse,2,38,20,Spring Lentil
+G79,Greenhouse,3,54,20,Spring Lentil
+G80,Greenhouse,4,67,20,Spring Lentil
+G13,Greenhouse,1,31,4,Tall Fescue
+G14,Greenhouse,2,37,4,Tall Fescue
+G15,Greenhouse,3,4,4,Tall Fescue
+G16,Greenhouse,4,71,4,Tall Fescue
+G81,Greenhouse,1,82,21,White Mustard
+G82,Greenhouse,2,57,21,White Mustard
+G83,Greenhouse,3,3,21,White Mustard
+G84,Greenhouse,4,74,21,White Mustard
+G61,Greenhouse,1,13,16,Winfred Brassica
+G62,Greenhouse,2,55,16,Winfred Brassica
+G63,Greenhouse,3,2,16,Winfred Brassica
+G64,Greenhouse,4,25,16,Winfred Brassica
+G57,Greenhouse,1,35,15,Winter peas
+G58,Greenhouse,2,89,15,Winter peas
+G59,Greenhouse,3,47,15,Winter peas
+G60,Greenhouse,4,20,15,Winter peas

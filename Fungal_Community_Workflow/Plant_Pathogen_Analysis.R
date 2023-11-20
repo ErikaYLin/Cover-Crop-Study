@@ -51,9 +51,9 @@ rownames(results.df) <- results.df$sample.ID  # Needed for to create the phylose
 # Create a new phyloseq-class object with all combined elements
 # Note that the `merge_phyloseq()` does not work if phylogenetic trees have different numbers of tips
 
-merge.ps <- phyloseq::phyloseq(otu_table(merge.otu),
-                               tax_table(merge.tax),
-                               sample_data(results.df))
+merge.ps <- phyloseq(otu_table(merge.otu),
+                     tax_table(merge.tax),
+                     sample_data(results.df))
 
 # Agglomerate by species for overall OTU table
 ps.species <- tax_glom(merge.ps, taxrank = 'Species', NArm = FALSE)
@@ -101,12 +101,15 @@ for (j in 1:nrow(plant_pathogens)) {
 }
 
 # Export to .csv for others to easily update the table
-write.csv(pathogen, file = "Fungal_Community_Workflow/Plant_Pathogen_Classification.csv", row.names = TRUE)
+# write.csv(pathogen, file = "Fungal_Community_Workflow/Plant_Pathogen_Classification.csv", row.names = TRUE)
 
 # # Import updated table
 # pathogen <- read.csv(file = "Fungal_Community_Workflow/Plant_Pathogen_Classification.csv")
 # row.names(pathogen) <- pathogen$X
 # pathogen <- pathogen[,-1]
+
+tax = phyloseq::tax_table(as.matrix(pathogen))
+tax_table(ps.species) <- tax
 
 # Extract pathogens only
 pathogen.only <- pathogen[pathogen$pathogenic == 1,]
@@ -124,7 +127,7 @@ pathogen.melt$pathogenic_taxon <- pathogen.only$pathogenic_taxon
 
 # Organize the data for abundance plots
 pathogen.melt <- pathogen.melt %>%
-  group_by(sample.ID, cover_crop, Family, Genus, Species, pathogenic_taxon) %>%
+  group_by(sample.ID, cover_crop, pathogenic_taxon) %>%
   summarise(Abundance = sum(Abundance))
 
 # Load icons for cover crops
@@ -196,7 +199,7 @@ icons <-
         axis.line.x = element_blank(),
         axis.ticks = element_blank(),
         panel.background = element_rect(fill = "transparent"),
-        plot.background = element_rect(fill = "transparent", color = NA))
+        plot.background = element_blank())
 
 # Layer cover crop icons on top of abundance bar plot
 FIG2 <-
@@ -208,20 +211,102 @@ FIG2 <-
             height = 1)
 ggsave("figures/pathogens_relative_CC.png", plot = FIG2, width = 6.86, height = 4.5)
 
+# Relative abundance of pathogen to non-pathogenic taxa
+# Transform sample counts to relative abundances
+pathogen.rel2 <- transform_sample_counts(ps.species, function(x) x/sum(x)*100)
+pathogen.melt2 <- psmelt(pathogen.rel2)
+
+# Organize the data for abundance plots
+nonpathogenic <- unique(pathogen.melt2$Species[pathogen.melt2$pathogenic == 0])
+pathogen.melt2$pathogenic[!(pathogen.melt2$Species %in% nonpathogenic)] <- "Pathogenic"
+pathogen.melt2$pathogenic[pathogen.melt2$Species %in% nonpathogenic] <- "Non-pathogenic"
+pathogen.melt2 <- pathogen.melt2 %>%
+  group_by(sample.ID, cover_crop, pathogenic) %>%
+  summarise(Abundance = sum(Abundance))
+
+# Relative abundance bar plot
+FIG6 <-
+  ggplot(pathogen.melt2, aes(x = sample.ID, y = Abundance, fill = pathogenic)) + 
+  geom_bar(stat = "identity", aes(fill = pathogenic)) + 
+  labs(x = "", y= "Abundance (%)") +
+  facet_wrap(~cover_crop, scales = "free_x", nrow = 1,
+             labeller = labeller(cover_crop = label_wrap_gen(width = 10))) +
+  theme_classic() +
+  scale_fill_manual(values = c("#9EDAFA", "#FD8A8B")) + 
+  scale_y_continuous(limits = c(0,110), expand = c(0,0)) +
+  theme(# plot.tag = element_text(size = 14, family = "sans", face = "bold"),
+    # plot.tag.position = c(0.83, 0.85),
+    axis.title.y = element_text(size = 10, family = "sans", face = "bold"), # vjust = 2.5),
+    axis.text.y = element_text(size = 7, family = "sans"),
+    axis.text.x  = element_text(size = 2, angle = 45),
+    axis.line.y = element_line(linewidth = 0.2),
+    axis.line.x = element_line(linewidth = 0.2),
+    axis.ticks.x = element_line(linewidth = 0.2),
+    # legend.position = "none",
+    legend.text = element_text(size = 7, family = "sans", face = "bold"),
+    legend.title = element_blank(),
+    # legend.position = c(0.82, 0.86), #horizontal, vertical
+    legend.key.height = unit(0.32, "cm"),
+    legend.key = element_blank(),
+    legend.background = element_rect(fill = "transparent"),
+    panel.background = element_rect(fill = "transparent"),
+    # panel.border = element_rect(linewidth = 0.3, fill = NA),
+    strip.text.x = element_text(size = 6, family = "sans", face = "bold"),
+    strip.background = element_blank(),
+    panel.spacing = unit(0.15, "lines"),
+    plot.background = element_blank(),
+    plot.margin = unit(c(0.2,0.1,0.2,0.2), "cm")) #top, right, bottom, left
+
+icons2 <-
+  ggplot() +
+  scale_y_continuous(limits = c(0,100), expand = c(0,0)) +
+  scale_x_continuous(limits = c(0,100), expand = c(0,0)) +
+  add_phylopic(buckwheat, alpha = 1, x = 9.2, y = 88.5, ysize = 8, color = "#c44601") +
+  add_phylopic(buffalo, alpha = 1, x = 17, y = 88.5, ysize = 8, color = "#FCC9B5") +
+  add_phylopic(clover, alpha = 1, x = 26, y = 88, ysize = 7, color = "#E1B239") +
+  add_phylopic(fieldpea, alpha = 1, x = 34.6, y = 88.5, ysize = 8, color = "#FCF2C7") +
+  add_phylopic(mustard, alpha = 1, x = 42.7, y = 88.5, ysize = 7.8, color = "#A3D8C6") +
+  add_phylopic(phacelia, alpha = 1, x = 51.3, y = 88.5, ysize = 7.8, color = "#329973") +
+  add_phylopic(lentil, alpha = 1, x = 59, y = 88.5, ysize = 8, color = "#7D99E6") +
+  add_phylopic(turnip, alpha = 1, x = 67.4, y = 88.5, ysize = 8, color = "#E0D2EB") +
+  add_phylopic(brassica, alpha = 1, x = 76, y = 88.5, ysize = 6.5, color = "#98669F") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x  = element_blank(),
+        axis.line.y = element_blank(),
+        axis.line.x = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill = "transparent", color = NA))
+
+# Layer cover crop icons on top of abundance bar plot
+FIG7 <-
+  ggdraw(FIG6) +
+  draw_plot(icons2,
+            x = 0,
+            y = 0,
+            width = 1,
+            height = 1)
+
+ggsave("figures/pathogen-nonpathogen_CC.png", plot = FIG7, width = 6.86, height = 4.5)
+
 
 # Absolute abundance bar plot ----
 # Combine abundance data and taxa
-pathogen.melt2 <- psmelt(pathogen.ps)
-pathogen.melt2$pathogenic_taxon <- pathogen.only$pathogenic_taxon
+pathogen.melt3 <- psmelt(pathogen.ps)
+pathogen.melt3$pathogenic_taxon <- pathogen.only$pathogenic_taxon
 
 # Organize the data for abundance plots
-pathogen.melt2 <- pathogen.melt2 %>%
-  group_by(sample.ID, site, cover_crop, Family, Genus, Species, pathogenic_taxon) %>%
+pathogen.melt3 <- pathogen.melt3 %>%
+  group_by(sample.ID, site, cover_crop, pathogenic_taxon) %>%
   summarise(Abundance = sum(Abundance))
 
 # Absolute abundance bar plot
 FIG3 <-
-  ggplot(pathogen.melt2, aes(x = sample.ID, y = Abundance, fill = pathogenic_taxon)) + 
+  ggplot(pathogen.melt3, aes(x = sample.ID, y = Abundance, fill = pathogenic_taxon)) + 
   geom_bar(stat = "identity", aes(fill = pathogenic_taxon)) + 
   labs(x = "", y= "Abundance", fill = "Taxon") +
   facet_wrap(~cover_crop, scales = "free_x", nrow = 1,
@@ -251,7 +336,7 @@ FIG3 <-
 
 ggsave("figures/pathogens_abs_barplot_CC.png", plot = FIG3, width = 6.86, height = 4.5)
 
-icons2 <-
+icons3 <-
   ggplot() +
   scale_y_continuous(limits = c(0,100), expand = c(0,0)) +
   scale_x_continuous(limits = c(0,100), expand = c(0,0)) +
@@ -280,7 +365,7 @@ icons2 <-
 # Layer cover crop icons on top of abundance bar plot
 FIG4 <-
   ggdraw(FIG3) +
-  draw_plot(icons2,
+  draw_plot(icons3,
             x = 0,
             y = 0,
             width = 1,
@@ -288,9 +373,14 @@ FIG4 <-
 ggsave("figures/pathogens_absolute_CC.png", plot = FIG4, width = 6.86, height = 4.5)
 
 # Abundance bar plot grouped by site and cover crop
+
+pathogen.melt4 <- pathogen.melt3 %>%
+  group_by(cover_crop, site, pathogenic_taxon) %>%
+  summarise(Abundance = sum(Abundance))
+
 # Absolute abundance bar plot
 FIG5 <-
-  ggplot(pathogen.melt2, aes(x = cover_crop, y = Abundance, fill = pathogenic_taxon)) + 
+  ggplot(pathogen.melt3, aes(x = cover_crop, y = Abundance, fill = pathogenic_taxon)) + 
   geom_bar(stat = "identity", aes(fill = pathogenic_taxon)) + 
   labs(x = "", y= "Abundance", fill = "Taxon") +
   facet_wrap(~site) +

@@ -1,6 +1,3 @@
-# Set working directory
-setwd("C:/Users/elinrg26/OneDrive - UBC/Research/GitHub/Cover Crop Study")
-
 # Pathogen Presence, Abundance, and Diversity
 
 # Load in the data
@@ -228,29 +225,26 @@ pathogen.melt2 <- pathogen.melt2 %>%
 FIG6 <-
   ggplot(pathogen.melt2, aes(x = sample.ID, y = Abundance, fill = pathogenic)) + 
   geom_bar(stat = "identity", aes(fill = pathogenic)) + 
-  labs(x = "", y= "Abundance (%)") +
+  labs(x = "", y= "Abundance (%)", tag = "B") +
   facet_wrap(~cover_crop, scales = "free_x", nrow = 1,
              labeller = labeller(cover_crop = label_wrap_gen(width = 10))) +
   theme_classic() +
   scale_fill_manual(values = c("#9EDAFA", "#FD8A8B")) + 
   scale_y_continuous(limits = c(0,110), expand = c(0,0)) +
-  theme(# plot.tag = element_text(size = 14, family = "sans", face = "bold"),
-    # plot.tag.position = c(0.83, 0.85),
+  theme(plot.tag = element_text(size = 14, family = "sans", face = "bold"),
+    plot.tag.position = c(0.02, 0.95),
     axis.title.y = element_text(size = 10, family = "sans", face = "bold"), # vjust = 2.5),
     axis.text.y = element_text(size = 7, family = "sans"),
     axis.text.x  = element_text(size = 2, angle = 45),
     axis.line.y = element_line(linewidth = 0.2),
     axis.line.x = element_line(linewidth = 0.2),
     axis.ticks.x = element_line(linewidth = 0.2),
-    # legend.position = "none",
     legend.text = element_text(size = 7, family = "sans", face = "bold"),
     legend.title = element_blank(),
-    # legend.position = c(0.82, 0.86), #horizontal, vertical
     legend.key.height = unit(0.32, "cm"),
     legend.key = element_blank(),
     legend.background = element_rect(fill = "transparent"),
     panel.background = element_rect(fill = "transparent"),
-    # panel.border = element_rect(linewidth = 0.3, fill = NA),
     strip.text.x = element_text(size = 6, family = "sans", face = "bold"),
     strip.background = element_blank(),
     panel.spacing = unit(0.15, "lines"),
@@ -261,15 +255,15 @@ icons2 <-
   ggplot() +
   scale_y_continuous(limits = c(0,100), expand = c(0,0)) +
   scale_x_continuous(limits = c(0,100), expand = c(0,0)) +
-  add_phylopic(buckwheat, alpha = 1, x = 9.2, y = 88.5, ysize = 8, color = "#c44601") +
-  add_phylopic(buffalo, alpha = 1, x = 17, y = 88.5, ysize = 8, color = "#FCC9B5") +
-  add_phylopic(clover, alpha = 1, x = 26, y = 88, ysize = 7, color = "#E1B239") +
-  add_phylopic(fieldpea, alpha = 1, x = 34.6, y = 88.5, ysize = 8, color = "#FCF2C7") +
-  add_phylopic(mustard, alpha = 1, x = 42.7, y = 88.5, ysize = 7.8, color = "#A3D8C6") +
-  add_phylopic(phacelia, alpha = 1, x = 51.3, y = 88.5, ysize = 7.8, color = "#329973") +
-  add_phylopic(lentil, alpha = 1, x = 59, y = 88.5, ysize = 8, color = "#7D99E6") +
-  add_phylopic(turnip, alpha = 1, x = 67.4, y = 88.5, ysize = 8, color = "#E0D2EB") +
-  add_phylopic(brassica, alpha = 1, x = 76, y = 88.5, ysize = 6.5, color = "#98669F") +
+  add_phylopic(buckwheat, alpha = 1, x = 9.2, y = 87.5, ysize = 8, color = "#c44601") +
+  add_phylopic(buffalo, alpha = 1, x = 17, y = 87.5, ysize = 8, color = "#FCC9B5") +
+  add_phylopic(clover, alpha = 1, x = 26, y = 87, ysize = 7, color = "#E1B239") +
+  add_phylopic(fieldpea, alpha = 1, x = 34.6, y = 87.5, ysize = 8, color = "#FCF2C7") +
+  add_phylopic(mustard, alpha = 1, x = 42.7, y = 87.5, ysize = 7.8, color = "#A3D8C6") +
+  add_phylopic(phacelia, alpha = 1, x = 51.3, y = 87.5, ysize = 7.8, color = "#329973") +
+  add_phylopic(lentil, alpha = 1, x = 59, y = 87.5, ysize = 8, color = "#7D99E6") +
+  add_phylopic(turnip, alpha = 1, x = 67.4, y = 87.5, ysize = 8, color = "#E0D2EB") +
+  add_phylopic(brassica, alpha = 1, x = 76, y = 87.5, ysize = 6.5, color = "#98669F") +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         axis.title.y = element_blank(),
@@ -302,7 +296,9 @@ pathogen.melt3$pathogenic_taxon <- pathogen.only$pathogenic_taxon
 # Organize the data for abundance plots
 pathogen.melt3 <- pathogen.melt3 %>%
   group_by(sample.ID, site, cover_crop, pathogenic_taxon) %>%
-  summarise(Abundance = sum(Abundance))
+  summarise(Abundance)
+  # summarise(Abundance)
+pathogen.melt3 <- aggregate(pathogen.melt3, pathogen.melt3$Abundance, FUN = sum)
 
 # Absolute abundance bar plot
 FIG3 <-
@@ -374,21 +370,23 @@ ggsave("figures/pathogens_absolute_CC.png", plot = FIG4, width = 6.86, height = 
 
 # Abundance bar plot grouped by site and cover crop
 
-pathogen.melt4 <- pathogen.melt3 %>%
-  group_by(cover_crop, site, pathogenic_taxon) %>%
-  summarise(Abundance = sum(Abundance))
+pathogen.melt4 <- psmelt(pathogen.ps)
+pathogen.melt4$pathogenic_taxon <- pathogen.only$pathogenic_taxon
+pathogen.melt4 <- pathogen.melt4 %>%
+  group_by(cover_crop, site, pathogenic_taxon, Abundance) %>%
+  summarise(Abundance = mean(Abundance))
 
 # Absolute abundance bar plot
 FIG5 <-
-  ggplot(pathogen.melt3, aes(x = cover_crop, y = Abundance, fill = pathogenic_taxon)) + 
+  ggplot(pathogen.melt4, aes(x = cover_crop, y = Abundance, fill = pathogenic_taxon)) + 
   geom_bar(stat = "identity", aes(fill = pathogenic_taxon)) + 
-  labs(x = "", y= "Abundance", fill = "Taxon") +
+  labs(x = "", y= "Abundance", fill = "Taxon", tag = "A") +
   facet_wrap(~site) +
   theme_classic() +
   scale_fill_manual(values = palette2) + 
   scale_x_discrete(labels = function(x) stringr::str_wrap(x, width = 10)) +
-  theme(# plot.tag = element_text(size = 14, family = "sans", face = "bold"),
-    # plot.tag.position = c(0.83, 0.85),
+  theme(plot.tag = element_text(size = 14, family = "sans", face = "bold"),
+    plot.tag.position = c(0.02, 0.95),
     axis.title = element_text(size = 10, family = "sans", face = "bold"),
     axis.text.y = element_text(size = 7, family = "sans"),
     axis.text.x  = element_text(size = 4, angle = 90, vjust = 0.5),
@@ -409,3 +407,7 @@ FIG5 <-
     plot.margin = unit(c(0.2,0.1,0.2,0.2), "cm")) #top, right, bottom, left
 
 ggsave("figures/pathogens_absolute_site.png", plot = FIG5, width = 6.86, height = 4.5)
+
+# Arrange figures
+FIG8 <- plot_grid(FIG5, FIG7, ncol = 1)
+ggsave("figures/pathogens_barplots.png", plot = FIG8, width = 6.86, height = 7.8)

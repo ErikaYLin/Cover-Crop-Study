@@ -1,6 +1,3 @@
-# set working directory
-setwd("C:/Users/elinrg26/OneDrive - UBC/Research/GitHub/Cover Crop Study")
-
 # Load `tidyverse` and requisite packages from Bioconductor
 library(tidyverse)
 library(BiocStyle)
@@ -10,6 +7,9 @@ library(phyloseq)
 # Load in the data
 load(file = "RDS/results_covercrop_noGreenhouse.rda")
 results.df <- readRDS(file = "RDS/results.df_noGreenhouse.rds")
+
+load(file = "RDS/results_covercrop_noGreenhouse_fix.rda")
+results.df2 <- readRDS(file = "RDS/results.df_noGreenhouse_fix.rds")
 
 # test <- readRDS(file = "RDS/metadata_covercrop.rds")
 # load(file = "RDS/preliminary_results_covercrop.rda")
@@ -59,7 +59,6 @@ library(rphylopic)
 
 
 # Restructuring data for easier subsequent handling ----
-
 
 # Extract all phyloseq objects from RESULTS into a list
 ps.list <- list()
@@ -201,8 +200,52 @@ merge.Su <- phyloseq::phyloseq(otu_table(otu.Su),
 # Big picture descriptive analyses ----
 
 palette <- c("#c44601", "#FCC9B5", "#E1B239", "#FCF2C7", "#A3D8C6", "#329973", "#7D99E6", "#E0D2EB", "#98669F", "#353A70", "#814B08", "gray60", "black")
-# colours = c("#7D99E6", "#92A9EA", "#fcf5c7", "#B6CBE2", "#ACC8E5", "#8babf1", "#b390bc", "#94D2BD", "#E9C46A", "gray60", "#814B08", "#CE8188", "#bf0603", "#6E4007")
-palette2 <- c("#005F73", "#0A9396", "#94D2BD", "#7A9EC6", "#E9D8A6", "#fbb13c", "#CA6702", "#9B2226", "#9F72AA", "#6d597a", "#355070", "#EE9B00")
+# colours = c("#7D99E6", "#92A9EA", "#fcf5c7", "#B6CBE2", "#ACC8E5", "#8babf1", "#b390bc", "#94D2BD", "#E9C46A", "gray60", "#814B08", "#CE8188", "#bf0603", "#6E4007", "#EE9B00")
+palette2 <- c("#005F73", "#0A9396", "#94D2BD", "#7A9EC6", "#E9D8A6", "#fbb13c", "#CA6702", "#9B2226", "#9F72AA", "#6d597a", "#355070")
+
+
+## Venn diagram for unique species across sites ----
+
+# Load package for venn diagram
+library(ggvenn)
+
+# Agglomerate by species for overall OTU table
+ps.species <- tax_glom(merge.ps, taxrank = 'Species', NArm = FALSE)
+# Merge samples by site
+sitegroup <- merge_samples(otu_table(ps.species), group = sample_data(ps.species)$site, fun = sum)
+sitegroup <- t(as.data.frame(otu_table(sitegroup)))
+# Replace sequences with species names
+venndata <- as.data.frame(sitegroup)
+taxaps <- as.data.frame(tax_table(ps.species))
+rownames(venndata) <- paste(taxaps$Genus, taxaps$Species, sep = ".")
+
+for (i in 1:nrow(venndata)) {
+  if (venndata[i,1] > 0) {  # TRUE if present
+    venndata[i,1] <- row.names(venndata[i,])
+  } else if (venndata[i,1] == 0) {  # FALSE if absent
+    venndata[i,1] <- NA} 
+  if (venndata[i,2] > 0) {  # TRUE if present
+    venndata[i,2] <- row.names(venndata[i,])
+  } else if (venndata[i,2] == 0) {  # FALSE if absent
+    venndata[i,2] <- NA}
+  if (venndata[i,3] > 0) {  # TRUE if present
+    venndata[i,3] <- row.names(venndata[i,])
+  } else if (venndata[i,3] == 0) {  # FALSE if absent
+    venndata[i,3] <- NA}
+}
+venndata <- as.list(venndata)
+
+# Create venn diagram that compares the number of unique species across sites
+venn <-
+  ggvenn(venndata, columns = c("Covert", "Kalala", "SuRDC"),
+         fill_color = c("red", "blue", "gold"),
+         stroke_size = 0.5, set_name_size = 4, text_size = 2.4) +
+  labs(tag = "A") +
+  theme(plot.background = element_rect(colour = "transparent"),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.08, 0.97)) # horizontal, vertical
+
+ggsave(plot = venn, file = "figures/venn_diagram_CC.png", width = 3.23, height = 3.5)
 
 ## Boxplots of diversity measures across cover crops and sites ----
 
@@ -288,7 +331,7 @@ ggsave("figures/PD_boxplot2.png", width = 6.86, height = 5)
 plot2 <-
   ggplot(data = results.df) +
   geom_boxplot(aes(y = rich, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  # y = c(PD, rich, Shannon, Simpson)
-  labs(fill = NULL, y = "Species Richness", tag = "A") +
+  labs(fill = NULL, y = "Species Richness", tag = "B") +
   scale_fill_manual(values = palette) +
   facet_wrap(vars(site)) +
   theme(panel.grid.major = element_blank(),
@@ -306,20 +349,133 @@ plot2 <-
         legend.key = element_blank(),
         legend.background = element_rect(fill = "transparent"),
         panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.5, fill = NA),
+        panel.spacing = unit(0.2, "lines"),
+        strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+ggsave(plot = plot2, "figures/richness_boxplot.png", width = 3.23, height = 4.5)
+
+CC_boxplots <- plot_grid(plot2, plot1, plot3, ncol = 1)
+ggsave("figures/CC_boxplots3.png", plot = CC_boxplots, width = 3.23, height = 7)
+
+
+## Boxplots of network measures across cover crops and site ----
+
+### Vertices ----
+plot4 <-
+  ggplot(data = results.df2) +
+  geom_boxplot(aes(y = vertices, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  # y = c(PD, rich, Shannon, Simpson)
+  labs(fill = NULL, y = "Vertices", tag = "A") +
+  scale_fill_manual(values = palette) +
+  scale_y_continuous(limits = c(0.4,700), expand = c(0,0)) +
+  facet_wrap(vars(site)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", face = "bold", vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        # axis.title.x = element_text(size = 10, family = "sans", face = "bold"),
+        legend.position = "none",
+        panel.background = element_rect(fill = "transparent"),
         panel.border = element_rect(linewidth = 0.2, fill = NA),
         panel.spacing = unit(0.2, "lines"),
         strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
         plot.background = element_rect(fill = "transparent", color = NA),
         plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
 
-ggsave("figures/richness_boxplot.png", width = 6.86, height = 4.5)
+ggsave("figures/Vertices_boxplot.png", width = 6.86, height = 5)
 
-# CC_boxplots <- gridExtra::grid.arrange(nrow = 3, plot2, plot1, plot3)
-# ggsave("figures/CC_boxplots2.png", plot = CC_boxplots, width = 3.23, height = 7)
+### Edges ----
+plot5 <-
+  ggplot(data = results.df2) +
+  geom_boxplot(aes(y = edges, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  # y = c(PD, rich, Shannon, Simpson)
+  labs(fill = NULL, y = "Edges", tag = "C") +
+  scale_fill_manual(values = palette) +
+  # scale_y_continuous(limits = c(0.4,3700), expand = c(0,0)) +
+  facet_wrap(vars(site)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", face = "bold", vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        # axis.title.x = element_text(size = 10, family = "sans", face = "bold"),
+        legend.position = "none",
+        panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.2, fill = NA),
+        panel.spacing = unit(0.2, "lines"),
+        strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
 
-CC_boxplots <-
-  plot_grid(plot2, plot1, plot3, ncol = 1)
-ggsave("figures/CC_boxplots3.png", plot = CC_boxplots, width = 3.23, height = 7)
+ggsave("figures/Edges_boxplot.png", width = 6.86, height = 5)
+
+### Connectivity ----
+plot6 <-
+  ggplot(data = results.df2) +
+  geom_boxplot(aes(y = connectivity, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  # y = c(PD, rich, Shannon, Simpson)
+  labs(fill = NULL, y = "Connectivity", tag = "C") +
+  scale_fill_manual(values = palette) +
+  # scale_y_continuous(limits = c(0.77,1.03), expand = c(0,0)) +
+  facet_wrap(vars(site)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", face = "bold", vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        # axis.title.x = element_text(size = 10, family = "sans", face = "bold"),
+        legend.position = "none",
+        panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.2, fill = NA),
+        panel.spacing = unit(0.2, "lines"),
+        strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+ggsave("figures/Connectivity_boxplot.png", width = 6.86, height = 5)
+
+### Connectance ----
+plot7 <-
+  ggplot(data = results.df2) +
+  geom_boxplot(aes(y = connectance, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  # y = c(PD, rich, Shannon, Simpson)
+  labs(fill = NULL, y = "Connectance", tag = "C") +
+  scale_fill_manual(values = palette) +
+  # scale_y_continuous(limits = c(0.77,1.03), expand = c(0,0)) +
+  facet_wrap(vars(site)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", face = "bold", vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        # axis.title.x = element_text(size = 10, family = "sans", face = "bold"),
+        legend.position = "none",
+        panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.2, fill = NA),
+        panel.spacing = unit(0.2, "lines"),
+        strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+ggsave("figures/Connectance_boxplot.png", width = 6.86, height = 5)
+
+CC_boxplots4 <- plot_grid(plot2, plot6, ncol = 1)
+ggsave("figures/CC_boxplots4.png", plot = CC_boxplots4, width = 3.23, height = 4.7)
+
+CC_vennbox <- plot_grid(venn, CC_boxplots4, ncol = 2)
+ggsave(file = "figures/CC_vennbox.png", plot = CC_vennbox, width = 6.86, height = 4.7)
 
 
 png(file = "figures/richness_boxplot.png", height = 900, width = 1000)
@@ -340,7 +496,7 @@ ggplot(data = results.df, aes(x = rich, y = PD)) +
   facet_wrap(vars(site))
 dev.off()
 
-## Beta Diversity/Co-Occurrence Affinity ----
+# Beta Diversity/Co-Occurrence Affinity ----
 
 # Co-Occurrence affinity was calculated using the alpha index and CRAN package formulated by Mainali et al. (2022).
 # https://doi.org/10.1126/sciadv.abj9204
@@ -358,7 +514,7 @@ taxaps <- as.data.frame(tax_table(ps.species))
 rownames(sitegroup) <- taxaps$Species
 
 # Prepare an occurrence matrix based on the OTU table
-occur.site <- dataprep(data = sitegroup, row.or.col = "col", datatype = "abundance", threshold = 1, class0.rule = "less")
+occur.site <- CooccurrenceAffinity::dataprep(data = sitegroup, row.or.col = "col", datatype = "abundance", threshold = 1, class0.rule = "less")
 
 # Calculate co-occurrence affinity between sites
 affinity.site <- CooccurrenceAffinity::affinity(occur.site, row.or.col = "col")
@@ -375,7 +531,7 @@ CCgroup <- t(as.data.frame(otu_table(CCgroup)))
 rownames(CCgroup) <- taxaps$Species
 
 # Prepare an occurrence matrix based on the OTU table
-occur.CC <- dataprep(data = CCgroup, row.or.col = "col", datatype = "abundance", threshold = 1, class0.rule = "less")
+occur.CC <- CooccurrenceAffinity::dataprep(data = CCgroup, row.or.col = "col", datatype = "abundance", threshold = 1, class0.rule = "less")
 
 # Calculate co-occurrence affinity between sites
 affinity.CC <- CooccurrenceAffinity::affinity(occur.CC, row.or.col = "col", squarematrix = c("alpha_mle", "jaccard"))
@@ -418,30 +574,32 @@ fit_random2 <- nlme::lme(ALPHA ~ SUMCOUNT, random = ~ SUMCOUNT|CC, data = as.dat
 
 AIC(fit); AIC(fit_random); AIC(fit_random2)
 
+summary(fit)
+
 # Visualize alpha by cover crop and overall trend
 FIG3 <-
   ggplot(data = DATA, aes(x = SUMCOUNT, y = ALPHA)) +
-  geom_point(aes(fill = CC), size = 1, shape = 21, stroke = 0.2) +
-  geom_smooth(aes(col = CC), method = "glm", method.args = list(family = Gamma()), se = F, size = 0.5) +
-  geom_smooth(aes(col = "All"), method = "glm", method.args = list(family = Gamma()), se = F, size = 1, colour = "black") +
-  labs(x = "Species Count per Cover Crop Pair", y = "Co-Occurence Affinity (\u03b1)") +
-  scale_x_continuous(limits = c(1600,2130), expand = c(0,0)) +
+  geom_point(aes(fill = CC), size = 1.5, shape = 21, stroke = 0.2) +
+  geom_smooth(aes(col = CC), method = "glm", method.args = list(family = Gamma()), se = F, linewidth = 1) +
+  geom_smooth(aes(col = "All"), method = "glm", method.args = list(family = Gamma()), se = F, linewidth = 1.5, colour = "black") +
+  labs(x = "Species Count per Cover Crop Pair", y = "Co-Occurence Affinity (\u03b1)", tag = "A") +
+  scale_x_continuous(limits = c(1750,2130), expand = c(0,0)) +
   scale_y_continuous(limits = c(1.73,2.45), expand = c(0,0)) +
   scale_fill_manual(values = palette) +
   scale_colour_manual(values = palette) +
   guides(fill = guide_legend(nrow = 3, byrow = TRUE)) +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
-        # plot.tag = element_text(size = 12, family = "sans", face = "bold"),
-        # plot.tag.position = c(0.09, 0.93), # horizontal, vertical
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
         axis.title.y = element_text(size = 8, family = "sans", face = "bold", vjust = 1.5),
         axis.text.y = element_text(size = 6, family = "sans"),
-        axis.text.x  = element_text(size = 6, family = "sans"),
+        axis.text.x = element_text(size = 6, family = "sans"),
         axis.ticks.y = element_line(linewidth = 0.2),
         axis.ticks.x = element_line(linewidth = 0.2),
         axis.title.x = element_text(size = 8, family = "sans", face = "bold"),
         legend.title = element_blank(),
-        legend.text = element_text(size = 4.5, family = "sans", face = "bold"),
+        legend.text = element_text(size = 5, family = "sans", face = "bold"),
         legend.position = "top", # horizontal, vertical
         legend.direction = "horizontal",
         legend.box.spacing = unit(c(0,0,0,0), "cm"),
@@ -462,132 +620,141 @@ FIG4 <-
   ggplot(data = affinity.CC$all, aes(x = entity_2, y = entity_1)) +
   theme_bw() +
   geom_tile(aes(fill = alpha_mle), colour = "gray60") +
-  labs(fill = "\u03b1") +
+  labs(fill = "\u03b1", tag = "B") +
   scale_x_discrete(limits = rev, labels = function(x) stringr::str_wrap(x, width = 10)) +
   scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 10)) +
   scale_fill_gradient2(low = "#190087", mid = "#E72476", high = "#FAEC50", midpoint = 2.1, space = "Lab") +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
-        # plot.tag = element_text(size = 8, family = "sans", face = "bold"),
-        # plot.tag.position = c(0.03, 0.93), # horizontal, vertical
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.03, 0.98), # horizontal, vertical
         axis.title.y = element_blank(),
         axis.title.x = element_blank(), #element_text(size = 4, family = "sans", face = "bold"),
-        axis.text.y = element_text(size = 3, family = "sans", face= "bold", angle = 40),
-        axis.text.x  = element_text(size = 3, family = "sans", face = "bold", angle = 40),
+        axis.text.y = element_text(size = 5, family = "sans", face = "bold", angle = 40, colour = "black"),
+        axis.text.x = element_text(size = 5, family = "sans", face = "bold", angle = 40, colour = "black", vjust = 0.85),
         axis.ticks.y = element_line(colour = "transparent"),
         axis.ticks.x = element_line(colour = "transparent"),
-        legend.title = element_text(size = 4, family = "sans", face = "bold"),
-        legend.text = element_text(size = 3.5, family = "sans", face = "bold"),
-        legend.position = c(0.38,0.95),#c(1, 0.45), # horizontal, vertical
+        legend.title = element_text(size = 7, family = "sans", face = "bold"),
+        legend.text = element_text(size = 5, family = "sans", face = "bold"),
+        legend.position = c(0.6,0.93),#c(1, 0.45), # horizontal, vertical
         legend.direction = "horizontal",
-        legend.margin = margin(t = 0, r = 0, b = 0, l =0, unit = "pt"),
-        legend.box.spacing = unit(c(0,0,0,0), "cm"),
-        legend.key.height = unit(0.12, "cm"),
-        legend.key.width = unit(0.18, "cm"),
+        # legend.margin = margin(t = 0, r = 0, b = 0, l =0, unit = "pt"),
+        # legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        legend.key.height = unit(0.3, "cm"),
+        legend.key.width = unit(0.34, "cm"),
         legend.key = element_blank(),
         legend.background = element_rect(fill = "transparent"),
         panel.border = element_blank(),
         panel.background = element_rect(fill = "transparent"),
-        plot.background = element_rect(fill = "transparent", color = NA))
-        # plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left)
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.6,0.1,0,0.2), "cm")) # top, right, bottom, left
 
-ggsave("figures/alpha_matrix_CC.png", plot = FIG4, width = 3.5, height = 2)
+ggsave("figures/alpha_matrix_CC.png", plot = FIG4, width = 3.23, height = 3.23)
 
-# Inset FIG3 and FIG4
-FIG5 <-
-  ggdraw(FIG3) +
-  draw_plot(FIG4,
-    x = 0.098,
-    y = 0.04,
-    width = 0.6,
-    height = 0.47
-  )
-ggsave("figures/combined_alpha_CC.png", plot = FIG5, width = 3.23, height = 3.85)
+# Combine FIG3 and FIG4
+FIG5 <- plot_grid(FIG3, FIG4, ncol = 2, rel_widths = c(4.2,5))
 
+ggsave(file = "figures/combined_alpha_CC2.png", plot = FIG5, width = 6.86, height = 4)
 
-### IGNORE: Site-specific affinity between cover crops ----
-
-# Agglomerate by species for Covert-specific OTU table
-Cov.species <- tax_glom(merge.Cov, taxrank = 'Species', NArm = FALSE)
-# Merge samples by cover crop
-Cov.CCgroup <- merge_samples(otu_table(Cov.species), group = sample_data(Cov.species)$cover_crop, fun = sum)
-Cov.CCgroup <- t(as.data.frame(otu_table(Cov.CCgroup)))
-# Replace sequences with species names
-taxaCov <- as.data.frame(tax_table(Cov.species))
-rownames(Cov.CCgroup) <- taxaCov$Species
-
-# Prepare an occurrence matrix based on the OTU table
-occur.Cov <- dataprep(data = Cov.CCgroup, row.or.col = "col", datatype = "abundance", threshold = 1, class0.rule = "less")
-
-# Calculate co-occurrence affinity (alpha index)
-affinity.Cov <- CooccurrenceAffinity::affinity(occur.Cov, row.or.col = "col")
-
-# View the occurrence matrix:
-affinity.Cov$occur_mat
-# view all computed outputs:
-affinity.Cov$all
+# # Inset FIG3 and FIG4
+# FIG5 <-
+#   ggdraw(FIG3) +
+#   draw_plot(FIG4,
+#     x = 0.098,
+#     y = 0.04,
+#     width = 0.6,
+#     height = 0.47
+#   )
+# ggsave("figures/combined_alpha_CC.png", plot = FIG5, width = 3.23, height = 3.85)
 
 
-# Agglomerate by species for Kalala-specific OTU table
-Kal.species <- tax_glom(merge.Kal, taxrank = 'Species', NArm = FALSE)
-# Merge samples by cover crop
-Kal.CCgroup <- merge_samples(otu_table(Kal.species), group = sample_data(Kal.species)$cover_crop, fun = sum)
-Kal.CCgroup <- t(as.data.frame(otu_table(Kal.CCgroup)))
-# Replace sequences with species names
-taxaKal <- as.data.frame(tax_table(Kal.species))
-rownames(Kal.CCgroup) <- taxaKal$Species
-
-# Prepare an occurrence matrix based on the OTU table
-occur.Kal <- dataprep(data = Kal.CCgroup, row.or.col = "col", datatype = "abundance", threshold = 1, class0.rule = "less")
-
-# Calculate co-occurrence affinity (alpha index)
-affinity.Kal <- CooccurrenceAffinity::affinity(occur.Kal, row.or.col = "col")
-
-# View the occurrence matrix:
-affinity.Kal$occur_mat
-# view all computed outputs:
-affinity.Kal$all
-
-
-# Agglomerate by species for SuRDC-specific OTU table
-Su.species <- tax_glom(merge.Su, taxrank = 'Species', NArm = FALSE)
-# Merge samples by cover crop
-Su.CCgroup <- merge_samples(otu_table(Su.species), group = sample_data(Su.species)$cover_crop, fun = sum)
-Su.CCgroup <- t(as.data.frame(otu_table(Su.CCgroup)))
-# Replace sequences with species names
-taxaSu <- as.data.frame(tax_table(Su.species))
-rownames(Su.CCgroup) <- taxaSu$Species
-
-# Prepare an occurrence matrix based on the OTU table
-occur.Su <- dataprep(data = Su.CCgroup, row.or.col = "col", datatype = "abundance", threshold = 1, class0.rule = "less")
-
-# Calculate co-occurrence affinity (alpha index)
-affinity.Su <- CooccurrenceAffinity::affinity(occur.Su, row.or.col = "col")
-
-# View the occurrence matrix:
-affinity.Su$occur_mat
-# view all computed outputs:
-affinity.Su$all
-
-
-## Random effects model (gam) ----
+# Random effects model (gam) ----
 
 # Load package for random effects glm modelling
-library(lme4)
-
-# Source the code from the betals.r script
-source(file = "Fungal_Community_Workflow/betals.r")
-
+library(lme4)  # <-- Might be nlme package instead, also might not need this!!!!!
 
 results.df$site <- as.factor(results.df$site)
 results.df$cover_crop <- as.factor(results.df$cover_crop)
-# GLMM plot
-model <- gam(list(PD ~ cover_crop + s(site, bs = "re"),  # random effects for sites, PD as a function of cover crop
-               ~ cover_crop + s(site, bs = "re")),
-              data = results.df,
-              family = gammals())  # gamma location scale distribution for values from 0 to infinity (betals for 0-1)
+
+results.df2$site <- as.factor(results.df2$site)
+results.df2$cover_crop <- as.factor(results.df2$cover_crop)
+
+# Source the code from the betals.r script
+source(file = "functions/betals.r")
+
+
+model.site <- gam(list(rich ~ site,  # random effects for sites, PD as a function of cover crop
+                       ~ site),
+                  data = results.df,
+                  family = gammals())  # gamma location scale distribution for values from 0 to infinity (betals for 0-1)
+
+summary(model.site)
+
+
+# GLMM plot for species richness
+model <- gam(list(rich ~ cover_crop + s(site, bs = "re"),  # random effects for sites, PD as a function of cover crop
+                  ~ cover_crop + s(site, bs = "re")),
+             data = results.df2,
+             family = gammals())  # gamma location scale distribution for values from 0 to infinity (betals for 0-1)
 
 summary(model)
+
+# GLMM plot for Shannon
+model2 <- gam(list(Shannon ~ cover_crop + s(site, bs = "re"),  # random effects for sites, PD as a function of cover crop
+                  ~ cover_crop + s(site, bs = "re")),
+             data = results.df2,
+             family = gammals())  # gamma location scale distribution for values from 0 to infinity (betals for 0-1)
+
+summary(model2)
+
+# GLMM plot for Simpson
+model3 <- gam(list(Simpson ~ cover_crop + s(site, bs = "re"),  # random effects for sites, PD as a function of cover crop
+                  ~ cover_crop + s(site, bs = "re")),
+             data = results.df2,
+             family = betals())  # gamma location scale distribution for values from 0 to infinity (betals for 0-1)
+
+summary(model3)
+
+# GLMM plot for PD
+model4 <- gam(list(PD ~ cover_crop + s(site, bs = "re"),  # random effects for sites, PD as a function of cover crop
+               ~ cover_crop + s(site, bs = "re")),
+              data = results.df2,
+              family = gammals())  # gamma location scale distribution for values from 0 to infinity (betals for 0-1)
+
+summary(model4)
+
+# GLMM plot for Vertices
+model5 <- gam(list(vertices ~ cover_crop + s(site, bs = "re"),  # random effects for sites, PD as a function of cover crop
+                   ~ cover_crop + s(site, bs = "re")),
+              data = results.df2,
+              family = gammals())  # gamma location scale distribution for values from 0 to infinity (betals for 0-1)
+
+summary(model5)
+
+# GLMM plot for Edges
+model6 <- gam(list(edges ~ cover_crop + s(site, bs = "re"),  # random effects for sites, PD as a function of cover crop
+                   ~ cover_crop + s(site, bs = "re")),
+              data = results.df2,
+              family = gammals())  # gamma location scale distribution for values from 0 to infinity (betals for 0-1)
+
+summary(model6)
+
+# GLMM plot for Connectivity
+model7 <- gam(list(connectivity ~ cover_crop + s(site, bs = "re"),  # random effects for sites, PD as a function of cover crop
+                   ~ cover_crop + s(site, bs = "re")),
+              data = results.df2,
+              family = gammals())  # gamma location scale distribution for values from 0 to infinity (betals for 0-1)
+
+summary(model7)
+
+# GLMM plot for Connectance
+model8 <- gam(list(connectance ~ cover_crop + s(site, bs = "re"),  # random effects for sites, PD as a function of cover crop
+                   ~ cover_crop + s(site, bs = "re")),
+              data = results.df2,
+              family = betals())  # gamma location scale distribution for values from 0 to infinity (betals for 0-1)
+
+summary(model8)
+
 
 library("multcomp")
 g1 <- glht(model, linfct = mcp(cover_crop = "Tukey"))
@@ -645,6 +812,10 @@ ps.melt2$Class[!(ps.melt2$Class %in% rare)] <- "< 1%"
 ps.sum2 <- ps.melt2 %>%
   group_by(sample.ID, cover_crop, Class) %>%
   summarise(Abundance = sum(Abundance))
+
+# How many fungal classes are <1%
+other <- ps.melt2$Class[!(ps.melt2$Class %in% rare)]
+length(other)
 
 
 # Load icons for cover crops
@@ -734,337 +905,410 @@ FIG6 <-
 ggsave("figures/abundance_barplot_CC.png", plot = FIG6, width = 6.86, height = 4.5)
 
 
-# Things to take a closer look at:
-# Phylum: Phacelia S32 + C31, Buckwheat S12
-# Class: Phacelia C31 + S31 + S32, Buckwheat S12, Spring Lentil S36, Brassica S10
-# Genus: Phacelia C31 + S35, Mustard White C24, Brassica SuRDC, Buckwheat S12
-# Overall: Phacelia, Buckwheat, and Brassica seem to have more variation in abundance
+# Heatmap RF legend ----
 
+library(ggplot2)
+library(cowplot)
+library(grid)
+library(gridExtra)
 
-# Heatmaps ----
+hm.legend1 <-
+  ggplot(data = results.df) +
+  theme_bw() +
+  geom_tile(aes(x = sample.ID, y = rich, fill = rich)) +
+  labs(fill = "Abundance") +
+  scale_fill_gradient2(low = "#190087", mid = "#E72476", high = "#FAEC50", midpoint = 350, space = "Lab") +
+  theme(legend.title = element_text(size = 4, family = "sans", face = "bold"),
+        legend.text = element_text(size = 3.5, family = "sans", face = "bold"),
+        legend.position = c(0.92,0.65), # horizontal, vertical
+        legend.direction = "vertical",
+        legend.margin = margin(t = 0, r = 0, b = 0, l =0, unit = "pt"),
+        legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        legend.key.height = unit(0.12, "cm"),
+        legend.key.width = unit(0.18, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"))
 
-# Differential abundance analyses were conducted following the workflow of Hui (2021):
-# https://www.yanh.org/2021/01/01/microbiome-r/#build-phyloseq-project
+lgd1 <- get_legend(hm.legend1)
+grid.newpage()
+grid.draw(lgd1)
 
-## BASED ON DESeq2 PACKAGE:
+hm.legend2 <-
+  ggplot(data = results.df) +
+  geom_tile(aes(x = sample.ID, y = cover_crop, fill = cover_crop)) +
+  scale_fill_manual(values = palette) +
+  theme(legend.title = element_blank(),
+        legend.text = element_text(size = 3.5, family = "sans", face = "bold"),
+        legend.position = c(0.92,0.5),#c(1, 0.45), # horizontal, vertical
+        legend.direction = "vertical",
+        legend.margin = margin(t = 0, r = 0, b = 0, l =0, unit = "pt"),
+        legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        legend.key.height = unit(0.12, "cm"),
+        legend.key.width = unit(0.18, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"))
+  
+lgd2 <- get_legend(hm.legend2)
+grid.newpage()
+grid.draw(lgd2)
+  
+hm.legend3 <-
+  ggplot(data = results.df) +
+  geom_tile(aes(x = sample.ID, y = site, fill = site)) +
+  scale_fill_manual(values = c("red", "blue", "gold")) +
+  labs(fill = "Site") +
+  theme(legend.title = element_text(size = 4, family = "sans", face = "bold"),
+        legend.text = element_text(size = 3.5, family = "sans", face = "bold"),
+        legend.position = c(0.92,0.35),#c(1, 0.45), # horizontal, vertical
+        legend.direction = "vertical",
+        legend.margin = margin(t = 0, r = 0, b = 0, l =0, unit = "pt"),
+        legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        legend.key.height = unit(0.12, "cm"),
+        legend.key.width = unit(0.18, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"))
+  
+lgd3 <- get_legend(hm.legend3)
+grid.newpage()
+grid.draw(lgd3)
 
-# Load `DESeq2` package
-library(GenomeInfoDb)
-library(DESeq2)
-
-# Agglomerate data by species 
-sample_data(merge.ps)$cover_crop <- as.factor(sample_data(merge.ps)$cover_crop) # factorize for DESeq2
-ps.species <- tax_glom(merge.ps, taxrank = 'Species', NArm = FALSE)
-# ps.class <- tax_glom(merge.ps, taxrank = 'Class', NArm = FALSE)http://127.0.0.1:36915/graphics/plot_zoom_png?width=1200&height=900
-
-## MAYBE NOT NEEDED -- Subset samples by site(?) and cover crop
-# ps.sub <- subset_samples(ps.species, cover_crop %in% c("Buckwheat", "Buffalo Grass", "Crescendo Ladino Clover",
-#                                                                  "Field Pea", "Mustard White", "Phacelia", "Spring Lentil",
-#                                                                  "Turnip", "Winfred Brassica"))
-
-# Filter features with abundances of zero > 90% of the sequences in a sample
-# ps.sub2 <- prune_taxa(rowSums(otu_table(ps.sub) == 0) < ncol(otu_table(ps.sub)) * 0.9, ps.sub) <-- might not be needed
-ps.ds = phyloseq_to_deseq2(ps.species, ~ 1)  ## `ps.sub` instead if subsampled by site/cover crop
-
-# Use "poscounts": an alternative estimator on the condition that a gene has some zero counts.
-# It calculates a modified geometric mean using the nth root of the product of non-zero counts.
-ds <- estimateSizeFactors(ps.ds, type = "poscounts") 
-ds = DESeq(ds, test = "Wald", fitType = "parametric")
-alpha = 0.05 
-res = results(ds, alpha = alpha)
-res = res[order(res$padj, na.last = NA), ]
-
-# Keeping only bottom 20 w/ lowest p.adj values, considered significant
-# taxa_sig = rownames(res[1:20, ]) # select bottom 20
-# ps.species.rel <- transform_sample_counts(ps.species, function(x) x/sum(x)*100)
-# ps.rel.sig <- prune_taxa(taxa_sig, ps.species.rel)
-
-# IF ALL KEPT
-ps.species.rel <- transform_sample_counts(ps.species, function(x) x/sum(x)*100) # if all kept
-# ps.class.rel <- transform_sample_counts(ps.class, function(x) x/sum(x)*100) # if all kept -- class
-# ps.phylum <- tax_glom(ps.species.rel, taxrank = 'Phylum', NArm = FALSE)
-
-matrix <- t(as.data.frame(otu_table(ps.rel.sig)))
-matrix <- as.matrix(matrix)
-rownames(matrix) <- as.character(tax_table(ps.rel.sig)[, "Species"])
-results.df_sub <- data.frame(sample_data(ps.rel.sig))
-
-# Define columns and rows by site and cover crops
-heatmap_col = data.frame(
-  Site = as.factor(results.df_sub$site), 
-  `Cover crop` = as.factor(results.df_sub$cover_crop), 
-  check.names = FALSE
-)
-
-rownames(heatmap_col) = rownames(results.df_sub)
-
-# heatmap_row = data.frame(
-  # Phylum = as.factor(tax_table(ps.rel.sig)[, "Phylum"])
-# )
-
-# rownames(heatmap_row) = rownames(matrix)
-
-# Define colours to fill heatmap boxes
-# phylum_col = RColorBrewer::brewer.pal(length(levels(heatmap_row$Phylum)), "Paired")
-# names(phylum_col) = levels(heatmap_row$Phylum)
-box_colours = list(
-  Site = c(`Covert` = "red", `Kalala` = "blue", `SuRDC` = "yellow"),
-  `Cover crop` = c(`Buckwheat` = "#c44601", `Buffalo Grass` = "#FCC9B5", `Crescendo Ladino Clover` = "#E1B239", 
-                   `Field Pea` = "#FCF2C7", `Mustard White` = "#A3D8C6", `Phacelia` = "#329973",
-                   `Spring Lentil` = "#7D99E6", `Turnip` = "#E0D2EB", `Winfred Brassica` =  "#98669F")
-  # Phylum = phylum_col
-)
-
-# Heatmap of most significant 20 species grouped by cover crop and phylum
-png(file = "figures/heatmap_20species_covercrop.png", height = 670, width = 1600, bg = "transparent")
-ComplexHeatmap::pheatmap(matrix, scale = "row", border_color = "gray60",
-                         cellwidth = 10, cellheight = 25,
-                         fontsize = 13,
-                         annotation_col = heatmap_col, 
-                         # annotation_row = heatmap_row, 
-                         annotation_colors = box_colours)
-dev.off()
-
-# Heatmap colun annotations
-map_col <- data.frame(`Cover crop` = as.factor(results.df_sub$cover_crop), check.names = FALSE)
-map_col2 <- data.frame(Site = as.factor(results.df_sub$site), check.names = FALSE)
-col_fill = list(`Cover crop` = c(`Buckwheat` = "#c44601", `Buffalo Grass` = "#FCC9B5", `Crescendo Ladino Clover` = "#E1B239", 
-                                  `Field Pea` = "#FCF2C7", `Mustard White` = "#A3D8C6", `Phacelia` = "#329973",
-                                  `Spring Lentil` = "#7D99E6", `Turnip` = "#E0D2EB", `Winfred Brassica` =  "#98669F"))
-col_fill2 <- list(Site = c(`Covert` = "red", `Kalala` = "blue", `SuRDC` = "yellow"))
-
-# Fixing heatmap
-annot_col <- ComplexHeatmap::HeatmapAnnotation(df = map_col, name = "Cover crop", col = col_fill, which = "column",
-                                               annotation_name_gp = grid::gpar(fontsize = 15.5))
-annot_col2 <- ComplexHeatmap::HeatmapAnnotation(df = map_col2, name = "Site", col = col_fill2, which = "column",
-                                                annotation_name_gp = grid::gpar(fontsize = 15.5))
-
-png(file = "figures/heatmap_20species_cc.png", height = 670, width = 1600, bg = "transparent")
-# FIG2 <-
-ComplexHeatmap::Heatmap(matrix, name = "Abundance", col = circlize::colorRamp2(c(0, 3, 6), c("#190087", "#E72476", "#FAEC50")),
-                        border = "gray60",
-                        show_row_names = TRUE,
-                        row_names_gp = grid::gpar(fontsize = 15.5),
-                        show_row_dend = TRUE,
-                        row_dend_side = "left",
-                        row_dend_width = unit(2, "cm"),
-                        show_column_names = TRUE,
-                        column_names_gp = grid::gpar(fontsize = 10),
-                        show_column_dend = TRUE,
-                        column_dend_side = "top",
-                        column_dend_height = unit(2, "cm"),
-                        # rect_gp = grid::gpar(col = "gray60", lwd = 0.5),
-                        top_annotation = c(annot_col, annot_col2),
-                        heatmap_legend_param = list(labels_gp = grid::gpar(fontsize = 12)))
-dev.off()
+# Inset legends into heatmap
+LGDS1 <-
+  ggdraw(lgd1) +
+  draw_plot(lgd2,
+            x = 0,
+            y = 0,
+            width = 1,
+            height = 1
+  )
+ggsave("figures/heatmap_fixlgd_cc.png", plot = hm_legend, width = 6.86, height = 4.5)
 
 
 
-## Heatmaps by site ----
-
-### Covert ----
-
-# Agglomerate data by species 
-sample_data(merge.Cov)$cover_crop <- as.factor(sample_data(merge.Cov)$cover_crop) # factorize for DESeq2
-Cov.species <- tax_glom(merge.Cov, taxrank = 'Species', NArm = FALSE)
-# Cov.class <- tax_glom(merge.Cov, taxrank = 'Class', NArm = FALSE)
-
-# Filter features with abundances of zero > 90% of the sequences in a sample
-# Cov.sub2 <- prune_taxa(rowSums(otu_table(Cov.sub) == 0) < ncol(otu_table(Cov.sub)) * 0.9, Cov.sub) <-- might not be needed
-Cov.ds = phyloseq_to_deseq2(Cov.species, ~ 1)  ## `Cov.sub` instead if subsampled by site/cover crop
-
-# Use "poscounts": an alternative estimator on the condition that a gene has some zero counts.
-# It calculates a modified geometric mean using the nth root of the product of non-zero counts.
-ds.C <- estimateSizeFactors(Cov.ds, type = "poscounts") 
-ds.C = DESeq(ds, test = "Wald", fitType = "parametric")
-alpha = 0.05 
-res.C = results(ds.C, alpha = alpha)
-res.C = res.C[order(res.C$padj, na.last = NA), ]
-
-# Keeping only bottom 20 w/ lowest p.adj values, considered significant
-taxa_sig.C = rownames(res.C[1:20, ]) # select bottom 20
-Cov.species.rel <- transform_sample_counts(Cov.species, function(x) x/sum(x)*100)
-Cov.rel.sig <- prune_taxa(taxa_sig.C, Cov.species.rel)
-
-## IF ALL KEPT
-# Cov.species.rel <- transform_sample_counts(Cov.species, function(x) x/sum(x)*100) # if all kept
-# Cov.class.rel <- transform_sample_counts(Cov.class, function(x) x/sum(x)*100) # if all kept -- class
-# Cov.phylum <- tax_glom(Cov.species.rel, taxrank = 'Phylum', NArm = FALSE)
-
-matrix.Cov <- t(as.data.frame(otu_table(Cov.rel.sig)))
-matrix.Cov <- as.matrix(matrix.Cov)
-rownames(matrix.Cov) <- as.character(tax_table(Cov.rel.sig)[, "Species"])
-results.df_Cov <- data.frame(sample_data(Cov.rel.sig))
-
-# Define columns and rows by site and cover crops
-heatmap_col.C = data.frame(
-  'Cover crop' = as.factor(results.df_Cov$cover_crop), 
-  check.names = FALSE
-)
-
-rownames(heatmap_col.C) = rownames(results.df_Cov)
-
-# heatmap_row.C = data.frame(
-#   Phylum = as.factor(tax_table(Cov.rel.sig)[, "Phylum"])
+# # Heatmaps (IGNORE)
+# 
+# # Differential abundance analyses were conducted following the workflow of Hui (2021):
+# # https://www.yanh.org/2021/01/01/microbiome-r/#build-phyloseq-project
+# 
+# ## BASED ON DESeq2 PACKAGE:
+# 
+# # Load `DESeq2` package
+# library(GenomeInfoDb)
+# library(DESeq2)
+# 
+# # Agglomerate data by species 
+# sample_data(merge.ps)$cover_crop <- as.factor(sample_data(merge.ps)$cover_crop) # factorize for DESeq2
+# ps.species <- tax_glom(merge.ps, taxrank = 'Species', NArm = FALSE)
+# # ps.class <- tax_glom(merge.ps, taxrank = 'Class', NArm = FALSE)http://127.0.0.1:36915/graphics/plot_zoom_png?width=1200&height=900
+# 
+# ## MAYBE NOT NEEDED -- Subset samples by site(?) and cover crop
+# # ps.sub <- subset_samples(ps.species, cover_crop %in% c("Buckwheat", "Buffalo Grass", "Crescendo Ladino Clover",
+# #                                                                  "Field Pea", "Mustard White", "Phacelia", "Spring Lentil",
+# #                                                                  "Turnip", "Winfred Brassica"))
+# 
+# # Filter features with abundances of zero > 90% of the sequences in a sample
+# # ps.sub2 <- prune_taxa(rowSums(otu_table(ps.sub) == 0) < ncol(otu_table(ps.sub)) * 0.9, ps.sub) <-- might not be needed
+# ps.ds = phyloseq_to_deseq2(ps.species, ~ 1)  ## `ps.sub` instead if subsampled by site/cover crop
+# 
+# # Use "poscounts": an alternative estimator on the condition that a gene has some zero counts.
+# # It calculates a modified geometric mean using the nth root of the product of non-zero counts.
+# ds <- estimateSizeFactors(ps.ds, type = "poscounts") 
+# ds = DESeq(ds, test = "Wald", fitType = "parametric")
+# alpha = 0.05 
+# res = results(ds, alpha = alpha)
+# res = res[order(res$padj, na.last = NA), ]
+# 
+# # Keeping only bottom 20 w/ lowest p.adj values, considered significant
+# # taxa_sig = rownames(res[1:20, ]) # select bottom 20
+# # ps.species.rel <- transform_sample_counts(ps.species, function(x) x/sum(x)*100)
+# # ps.rel.sig <- prune_taxa(taxa_sig, ps.species.rel)
+# 
+# # IF ALL KEPT
+# ps.species.rel <- transform_sample_counts(ps.species, function(x) x/sum(x)*100) # if all kept
+# # ps.class.rel <- transform_sample_counts(ps.class, function(x) x/sum(x)*100) # if all kept -- class
+# # ps.phylum <- tax_glom(ps.species.rel, taxrank = 'Phylum', NArm = FALSE)
+# 
+# matrix <- t(as.data.frame(otu_table(ps.rel.sig)))
+# matrix <- as.matrix(matrix)
+# rownames(matrix) <- as.character(tax_table(ps.rel.sig)[, "Species"])
+# results.df_sub <- data.frame(sample_data(ps.rel.sig))
+# 
+# # Define columns and rows by site and cover crops
+# heatmap_col = data.frame(
+#   Site = as.factor(results.df_sub$site), 
+#   `Cover crop` = as.factor(results.df_sub$cover_crop), 
+#   check.names = FALSE
 # )
 # 
-# rownames(heatmap_row.C) = rownames(matrix.Cov)
-
-# Define colours to fill heatmap boxes
-# phylum_col.C = RColorBrewer::brewer.pal(length(levels(heatmap_row.C$Phylum)), "Paired")
-# names(phylum_col.C) = levels(heatmap_row.C$Phylum)
-box_colours.C = list(
-  `Cover crop` = c(`Buckwheat` = "#c44601", `Buffalo Grass` = "#FCC9B5", `Crescendo Ladino Clover` = "#E1B239", 
-                   `Field Pea` = "#FCF2C7", `Mustard White` = "#A3D8C6", `Phacelia` = "#329973",
-                   `Spring Lentil` = "#7D99E6", `Turnip` = "#E0D2EB", `Winfred Brassica` =  "#98669F")#,
-  # Phylum = phylum_col.C
-)
-
-# Heatmap of most significant 20 species grouped by cover crop and phylum
-png(file = "figures/heatmap_20species_Cov.png", height = 500, width = 1400)
-ComplexHeatmap::pheatmap(matrix.Cov, scale= "row", border_color = "gray60",
-                         cellwidth = 20, cellheight = 20,
-                         fontsize = 15,
-                         annotation_col = heatmap_col.C,
-                         # annotation_row = heatmap_row.C,
-                         annotation_colors = box_colours)
-dev.off()
-
-### Kalala ----
-
-# Agglomerate data by species 
-sample_data(merge.Kal)$cover_crop <- as.factor(sample_data(merge.Kal)$cover_crop) # factorize for DESeq2
-Kal.species <- tax_glom(merge.Kal, taxrank = 'Species', NArm = FALSE)
-# Kal.class <- tax_glom(merge.Kal, taxrank = 'Class', NArm = FALSE)
-
-# Filter features with abundances of zero > 90% of the sequences in a sample
-# Kal.sub2 <- prune_taxa(rowSums(otu_table(Kal.sub) == 0) < ncol(otu_table(Kal.sub)) * 0.9, Kal.sub) <-- might not be needed
-Kal.ds = phyloseq_to_deseq2(Kal.species, ~ 1)  ## `Kal.sub` instead if subsampled by site/cover crop
-
-# Use "poscounts": an alternative estimator on the condition that a gene has some zero counts.
-# It calculates a modified geometric mean using the nth root of the product of non-zero counts.
-ds.K <- estimateSizeFactors(Kal.ds, type = "poscounts") 
-ds.K = DESeq(ds, test = "Wald", fitType = "parametric")
-alpha = 0.05 
-res.K = results(ds.K, alpha = alpha)
-res.K = res.K[order(res.K$padj, na.last = NA), ]
-
-# Keeping only bottom 20 w/ lowest p.adj values, considered significant
-taxa_sig.K = rownames(res.K[1:20, ]) # select bottom 20
-Kal.species.rel <- transform_sample_counts(Kal.species, function(x) x/sum(x)*100)
-Kal.rel.sig <- prune_taxa(taxa_sig.K, Kal.species.rel)
-
-## IF ALL KEPT
-# Kal.species.rel <- transform_sample_counts(Kal.species, function(x) x/sum(x)*100) # if all kept
-# Kal.class.rel <- transform_sample_counts(Kal.class, function(x) x/sum(x)*100) # if all kept -- class
-# Kal.phylum <- tax_glom(Kal.species.rel, taxrank = 'Phylum', NArm = FALSE)
-
-matrix.Kal <- t(as.data.frame(otu_table(Kal.rel.sig)))
-matrix.Kal <- as.matrix(matrix.Kal)
-rownames(matrix.Kal) <- as.character(tax_table(Kal.rel.sig)[, "Species"])
-results.df_Kal <- data.frame(sample_data(Kal.rel.sig))
-
-# Define columns and rows by site and cover crops
-heatmap_col.K = data.frame(
-  'Cover crop' = as.factor(results.df_Kal$cover_crop), 
-  check.names = FALSE
-)
-
-rownames(heatmap_col.K) = rownames(results.df_Kal)
-
-# heatmap_row.K = data.frame(
-#   Phylum = as.factor(tax_table(Kal.rel.sig)[, "Phylum"])
-# )
-
-# rownames(heatmap_row.K) = rownames(matrix.Kal)
-
-# Define colours to fill heatmap boxes
-# phylum_col.K = RColorBrewer::brewer.pal(length(levels(heatmap_row.K$Phylum)), "Paired")
-# names(phylum_col.K) = levels(heatmap_row.K$Phylum)
-box_colours.K = list(
-  `Cover crop` = c(`Buckwheat` = "#c44601", `Buffalo Grass` = "#FCC9B5", `Crescendo Ladino Clover` = "#E1B239", 
-                   `Field Pea` = "#FCF2C7", `Mustard White` = "#A3D8C6", `Phacelia` = "#329973",
-                   `Spring Lentil` = "#7D99E6", `Turnip` = "#E0D2EB", `Winfred Brassica` =  "#98669F")
-  # Phylum = phylum_col.K
-)
-
-# Heatmap of most significant 20 species grouped by cover crop and phylum
-png(file = "figures/heatmap_20species_Kal.png", height = 500, width = 1200)
-ComplexHeatmap::pheatmap(matrix.Kal, scale= "row", border_color = "gray60",
-                         cellwidth = 15, cellheight = 15,
-                         fontsize = 16,
-                         annotation_col = heatmap_col.K, 
-                         # annotation_row = heatmap_row.K, 
-                         annotation_colors = box_colours)
-dev.off()
-
-### SuRDC ----
-
-# Agglomerate data by species 
-sample_data(merge.Su)$cover_crop <- as.factor(sample_data(merge.Su)$cover_crop) # factorize for DESeq2
-Su.species <- tax_glom(merge.Su, taxrank = 'Species', NArm = FALSE)
-# Su.class <- tax_glom(merge.Su, taxrank = 'Class', NArm = FALSE)
-
-# Filter features with abundances of zero > 90% of the sequences in a sample
-# Su.sub2 <- prune_taxa(rowSums(otu_table(Su.sub) == 0) < ncol(otu_table(Su.sub)) * 0.9, Su.sub) <-- might not be needed
-Su.ds = phyloseq_to_deseq2(Su.species, ~ 1)  ## `Su.sub` instead if subsampled by site/cover crop
-
-# Use "poscounts": an alternative estimator on the condition that a gene has some zero counts.
-# It calculates a modified geometric mean using the nth root of the product of non-zero counts.
-ds.S <- estimateSizeFactors(Su.ds, type = "poscounts") 
-ds.S = DESeq(ds, test = "Wald", fitType = "parametric")
-alpha = 0.05 
-res.S = results(ds.S, alpha = alpha)
-res.S = res.S[order(res.S$padj, na.last = NA), ]
-
-# Keeping only bottom 20 w/ lowest p.adj values, considered significant
-taxa_sig.S = rownames(res.S[1:20, ]) # select bottom 20
-Su.species.rel <- transform_sample_counts(Su.species, function(x) x/sum(x)*100)
-Su.rel.sig <- prune_taxa(taxa_sig.S, Su.species.rel)
-
-## IF ALL KEPT
-# Su.species.rel <- transform_sample_counts(Su.species, function(x) x/sum(x)*100) # if all kept
-# Su.class.rel <- transform_sample_counts(Su.class, function(x) x/sum(x)*100) # if all kept -- class
-# Su.phylum <- tax_glom(Su.species.rel, taxrank = 'Phylum', NArm = FALSE)
-
-matrix.Su <- t(as.data.frame(otu_table(Su.rel.sig)))
-matrix.Su <- as.matrix(matrix.Su)
-rownames(matrix.Su) <- as.character(tax_table(Su.rel.sig)[, "Species"])
-results.df_Su <- data.frame(sample_data(Su.rel.sig))
-
-# Define columns and rows by site and cover crops
-heatmap_col.S = data.frame(
-  'Cover crop' = as.factor(results.df_Su$cover_crop), 
-  check.names = FALSE
-)
-
-rownames(heatmap_col.S) = rownames(results.df_Su)
-
-# heatmap_row.S = data.frame(
-#   Phylum = as.factor(tax_table(Su.rel.sig)[, "Phylum"])
+# rownames(heatmap_col) = rownames(results.df_sub)
+# 
+# # heatmap_row = data.frame(
+#   # Phylum = as.factor(tax_table(ps.rel.sig)[, "Phylum"])
+# # )
+# 
+# # rownames(heatmap_row) = rownames(matrix)
+# 
+# # Define colours to fill heatmap boxes
+# # phylum_col = RColorBrewer::brewer.pal(length(levels(heatmap_row$Phylum)), "Paired")
+# # names(phylum_col) = levels(heatmap_row$Phylum)
+# box_colours = list(
+#   Site = c(`Covert` = "red", `Kalala` = "blue", `SuRDC` = "yellow"),
+#   `Cover crop` = c(`Buckwheat` = "#c44601", `Buffalo Grass` = "#FCC9B5", `Crescendo Ladino Clover` = "#E1B239", 
+#                    `Field Pea` = "#FCF2C7", `Mustard White` = "#A3D8C6", `Phacelia` = "#329973",
+#                    `Spring Lentil` = "#7D99E6", `Turnip` = "#E0D2EB", `Winfred Brassica` =  "#98669F")
+#   # Phylum = phylum_col
 # )
 # 
-# rownames(heatmap_row.S) = rownames(matrix.Su)
-
-# Define colours to fill heatmap boxes
-# phylum_col.S = RColorBrewer::brewer.pal(length(levels(heatmap_row.S$Phylum)), "Paired")
-# names(phylum_col.S) = levels(heatmap_row.S$Phylum)
-box_colours.S = list(
-  `Cover crop` = c(`Buckwheat` = "#c44601", `Buffalo Grass` = "#FCC9B5", `Crescendo Ladino Clover` = "#E1B239", 
-                   `Field Pea` = "#FCF2C7", `Mustard White` = "#A3D8C6", `Phacelia` = "#329973",
-                   `Spring Lentil` = "#7D99E6", `Turnip` = "#E0D2EB", `Winfred Brassica` =  "#98669F")
-  # Phylum = phylum_col.S
-)
-
-# Heatmap of most significant 20 species grouped by cover crop and phylum
-png(file = "figures/heatmap_20species_Su.png", height = 500, width = 1200)
-ComplexHeatmap::pheatmap(matrix.Su, scale= "row", border_color = "gray60",
-                         cellwidth = 15, cellheight = 15,
-                         fontsize = 16,
-                         annotation_col = heatmap_col.S, 
-                         # annotation_row = heatmap_row.S, 
-                         annotation_colors = box_colours)
-dev.off()
+# # Heatmap of most significant 20 species grouped by cover crop and phylum
+# png(file = "figures/heatmap_20species_covercrop.png", height = 670, width = 1600, bg = "transparent")
+# ComplexHeatmap::pheatmap(matrix, scale = "row", border_color = "gray60",
+#                          cellwidth = 10, cellheight = 25,
+#                          fontsize = 13,
+#                          annotation_col = heatmap_col, 
+#                          # annotation_row = heatmap_row, 
+#                          annotation_colors = box_colours)
+# dev.off()
+# 
+# # Heatmap column annotations
+# map_col <- data.frame(`Cover crop` = as.factor(results.df_sub$cover_crop), check.names = FALSE)
+# map_col2 <- data.frame(Site = as.factor(results.df_sub$site), check.names = FALSE)
+# col_fill = list(`Cover crop` = c(`Buckwheat` = "#c44601", `Buffalo Grass` = "#FCC9B5", `Crescendo Ladino Clover` = "#E1B239", 
+#                                   `Field Pea` = "#FCF2C7", `Mustard White` = "#A3D8C6", `Phacelia` = "#329973",
+#                                   `Spring Lentil` = "#7D99E6", `Turnip` = "#E0D2EB", `Winfred Brassica` =  "#98669F"))
+# col_fill2 <- list(Site = c(`Covert` = "red", `Kalala` = "blue", `SuRDC` = "yellow"))
+# 
+# # Fixing heatmap
+# annot_col <- ComplexHeatmap::HeatmapAnnotation(df = map_col, name = "Cover crop", col = col_fill, which = "column",
+#                                                annotation_name_gp = grid::gpar(fontsize = 15.5))
+# annot_col2 <- ComplexHeatmap::HeatmapAnnotation(df = map_col2, name = "Site", col = col_fill2, which = "column",
+#                                                 annotation_name_gp = grid::gpar(fontsize = 15.5))
+# 
+# png(file = "figures/heatmap_20species_cc.png", height = 670, width = 1600, bg = "transparent")
+# # FIG2 <-
+# ComplexHeatmap::Heatmap(matrix, name = "Abundance", col = circlize::colorRamp2(c(0, 3, 6), c("#190087", "#E72476", "#FAEC50")),
+#                         border = "gray60",
+#                         show_row_names = TRUE,
+#                         row_names_gp = grid::gpar(fontsize = 15.5),
+#                         show_row_dend = TRUE,
+#                         row_dend_side = "left",
+#                         row_dend_width = unit(2, "cm"),
+#                         show_column_names = TRUE,
+#                         column_names_gp = grid::gpar(fontsize = 10),
+#                         show_column_dend = TRUE,
+#                         column_dend_side = "top",
+#                         column_dend_height = unit(2, "cm"),
+#                         # rect_gp = grid::gpar(col = "gray60", lwd = 0.5),
+#                         top_annotation = c(annot_col, annot_col2),
+#                         heatmap_legend_param = list(labels_gp = grid::gpar(fontsize = 12)))
+# dev.off()
+# 
+# 
+# 
+# ## Heatmaps by site
+# 
+# ### Covert 
+# 
+# # Agglomerate data by species 
+# sample_data(merge.Cov)$cover_crop <- as.factor(sample_data(merge.Cov)$cover_crop) # factorize for DESeq2
+# Cov.species <- tax_glom(merge.Cov, taxrank = 'Species', NArm = FALSE)
+# # Cov.class <- tax_glom(merge.Cov, taxrank = 'Class', NArm = FALSE)
+# 
+# # Filter features with abundances of zero > 90% of the sequences in a sample
+# # Cov.sub2 <- prune_taxa(rowSums(otu_table(Cov.sub) == 0) < ncol(otu_table(Cov.sub)) * 0.9, Cov.sub) <-- might not be needed
+# Cov.ds = phyloseq_to_deseq2(Cov.species, ~ 1)  ## `Cov.sub` instead if subsampled by site/cover crop
+# 
+# # Use "poscounts": an alternative estimator on the condition that a gene has some zero counts.
+# # It calculates a modified geometric mean using the nth root of the product of non-zero counts.
+# ds.C <- estimateSizeFactors(Cov.ds, type = "poscounts") 
+# ds.C = DESeq(ds, test = "Wald", fitType = "parametric")
+# alpha = 0.05 
+# res.C = results(ds.C, alpha = alpha)
+# res.C = res.C[order(res.C$padj, na.last = NA), ]
+# 
+# # Keeping only bottom 20 w/ lowest p.adj values, considered significant
+# taxa_sig.C = rownames(res.C[1:20, ]) # select bottom 20
+# Cov.species.rel <- transform_sample_counts(Cov.species, function(x) x/sum(x)*100)
+# Cov.rel.sig <- prune_taxa(taxa_sig.C, Cov.species.rel)
+# 
+# ## IF ALL KEPT
+# # Cov.species.rel <- transform_sample_counts(Cov.species, function(x) x/sum(x)*100) # if all kept
+# # Cov.class.rel <- transform_sample_counts(Cov.class, function(x) x/sum(x)*100) # if all kept -- class
+# # Cov.phylum <- tax_glom(Cov.species.rel, taxrank = 'Phylum', NArm = FALSE)
+# 
+# matrix.Cov <- t(as.data.frame(otu_table(Cov.rel.sig)))
+# matrix.Cov <- as.matrix(matrix.Cov)
+# rownames(matrix.Cov) <- as.character(tax_table(Cov.rel.sig)[, "Species"])
+# results.df_Cov <- data.frame(sample_data(Cov.rel.sig))
+# 
+# # Define columns and rows by site and cover crops
+# heatmap_col.C = data.frame(
+#   'Cover crop' = as.factor(results.df_Cov$cover_crop), 
+#   check.names = FALSE
+# )
+# 
+# rownames(heatmap_col.C) = rownames(results.df_Cov)
+# 
+# # heatmap_row.C = data.frame(
+# #   Phylum = as.factor(tax_table(Cov.rel.sig)[, "Phylum"])
+# # )
+# # 
+# # rownames(heatmap_row.C) = rownames(matrix.Cov)
+# 
+# # Define colours to fill heatmap boxes
+# # phylum_col.C = RColorBrewer::brewer.pal(length(levels(heatmap_row.C$Phylum)), "Paired")
+# # names(phylum_col.C) = levels(heatmap_row.C$Phylum)
+# box_colours.C = list(
+#   `Cover crop` = c(`Buckwheat` = "#c44601", `Buffalo Grass` = "#FCC9B5", `Crescendo Ladino Clover` = "#E1B239", 
+#                    `Field Pea` = "#FCF2C7", `Mustard White` = "#A3D8C6", `Phacelia` = "#329973",
+#                    `Spring Lentil` = "#7D99E6", `Turnip` = "#E0D2EB", `Winfred Brassica` =  "#98669F")#,
+#   # Phylum = phylum_col.C
+# )
+# 
+# # Heatmap of most significant 20 species grouped by cover crop and phylum
+# png(file = "figures/heatmap_20species_Cov.png", height = 500, width = 1400)
+# ComplexHeatmap::pheatmap(matrix.Cov, scale= "row", border_color = "gray60",
+#                          cellwidth = 20, cellheight = 20,
+#                          fontsize = 15,
+#                          annotation_col = heatmap_col.C,
+#                          # annotation_row = heatmap_row.C,
+#                          annotation_colors = box_colours)
+# dev.off()
+# 
+# ### Kalala 
+# 
+# # Agglomerate data by species 
+# sample_data(merge.Kal)$cover_crop <- as.factor(sample_data(merge.Kal)$cover_crop) # factorize for DESeq2
+# Kal.species <- tax_glom(merge.Kal, taxrank = 'Species', NArm = FALSE)
+# # Kal.class <- tax_glom(merge.Kal, taxrank = 'Class', NArm = FALSE)
+# 
+# # Filter features with abundances of zero > 90% of the sequences in a sample
+# # Kal.sub2 <- prune_taxa(rowSums(otu_table(Kal.sub) == 0) < ncol(otu_table(Kal.sub)) * 0.9, Kal.sub) <-- might not be needed
+# Kal.ds = phyloseq_to_deseq2(Kal.species, ~ 1)  ## `Kal.sub` instead if subsampled by site/cover crop
+# 
+# # Use "poscounts": an alternative estimator on the condition that a gene has some zero counts.
+# # It calculates a modified geometric mean using the nth root of the product of non-zero counts.
+# ds.K <- estimateSizeFactors(Kal.ds, type = "poscounts") 
+# ds.K = DESeq(ds, test = "Wald", fitType = "parametric")
+# alpha = 0.05 
+# res.K = results(ds.K, alpha = alpha)
+# res.K = res.K[order(res.K$padj, na.last = NA), ]
+# 
+# # Keeping only bottom 20 w/ lowest p.adj values, considered significant
+# taxa_sig.K = rownames(res.K[1:20, ]) # select bottom 20
+# Kal.species.rel <- transform_sample_counts(Kal.species, function(x) x/sum(x)*100)
+# Kal.rel.sig <- prune_taxa(taxa_sig.K, Kal.species.rel)
+# 
+# ## IF ALL KEPT
+# # Kal.species.rel <- transform_sample_counts(Kal.species, function(x) x/sum(x)*100) # if all kept
+# # Kal.class.rel <- transform_sample_counts(Kal.class, function(x) x/sum(x)*100) # if all kept -- class
+# # Kal.phylum <- tax_glom(Kal.species.rel, taxrank = 'Phylum', NArm = FALSE)
+# 
+# matrix.Kal <- t(as.data.frame(otu_table(Kal.rel.sig)))
+# matrix.Kal <- as.matrix(matrix.Kal)
+# rownames(matrix.Kal) <- as.character(tax_table(Kal.rel.sig)[, "Species"])
+# results.df_Kal <- data.frame(sample_data(Kal.rel.sig))
+# 
+# # Define columns and rows by site and cover crops
+# heatmap_col.K = data.frame(
+#   'Cover crop' = as.factor(results.df_Kal$cover_crop), 
+#   check.names = FALSE
+# )
+# 
+# rownames(heatmap_col.K) = rownames(results.df_Kal)
+# 
+# # heatmap_row.K = data.frame(
+# #   Phylum = as.factor(tax_table(Kal.rel.sig)[, "Phylum"])
+# # )
+# 
+# # rownames(heatmap_row.K) = rownames(matrix.Kal)
+# 
+# # Define colours to fill heatmap boxes
+# # phylum_col.K = RColorBrewer::brewer.pal(length(levels(heatmap_row.K$Phylum)), "Paired")
+# # names(phylum_col.K) = levels(heatmap_row.K$Phylum)
+# box_colours.K = list(
+#   `Cover crop` = c(`Buckwheat` = "#c44601", `Buffalo Grass` = "#FCC9B5", `Crescendo Ladino Clover` = "#E1B239", 
+#                    `Field Pea` = "#FCF2C7", `Mustard White` = "#A3D8C6", `Phacelia` = "#329973",
+#                    `Spring Lentil` = "#7D99E6", `Turnip` = "#E0D2EB", `Winfred Brassica` =  "#98669F")
+#   # Phylum = phylum_col.K
+# )
+# 
+# # Heatmap of most significant 20 species grouped by cover crop and phylum
+# png(file = "figures/heatmap_20species_Kal.png", height = 500, width = 1200)
+# ComplexHeatmap::pheatmap(matrix.Kal, scale= "row", border_color = "gray60",
+#                          cellwidth = 15, cellheight = 15,
+#                          fontsize = 16,
+#                          annotation_col = heatmap_col.K, 
+#                          # annotation_row = heatmap_row.K, 
+#                          annotation_colors = box_colours)
+# dev.off()
+# 
+# ### SuRDC 
+# 
+# # Agglomerate data by species 
+# sample_data(merge.Su)$cover_crop <- as.factor(sample_data(merge.Su)$cover_crop) # factorize for DESeq2
+# Su.species <- tax_glom(merge.Su, taxrank = 'Species', NArm = FALSE)
+# # Su.class <- tax_glom(merge.Su, taxrank = 'Class', NArm = FALSE)
+# 
+# # Filter features with abundances of zero > 90% of the sequences in a sample
+# # Su.sub2 <- prune_taxa(rowSums(otu_table(Su.sub) == 0) < ncol(otu_table(Su.sub)) * 0.9, Su.sub) <-- might not be needed
+# Su.ds = phyloseq_to_deseq2(Su.species, ~ 1)  ## `Su.sub` instead if subsampled by site/cover crop
+# 
+# # Use "poscounts": an alternative estimator on the condition that a gene has some zero counts.
+# # It calculates a modified geometric mean using the nth root of the product of non-zero counts.
+# ds.S <- estimateSizeFactors(Su.ds, type = "poscounts") 
+# ds.S = DESeq(ds, test = "Wald", fitType = "parametric")
+# alpha = 0.05 
+# res.S = results(ds.S, alpha = alpha)
+# res.S = res.S[order(res.S$padj, na.last = NA), ]
+# 
+# # Keeping only bottom 20 w/ lowest p.adj values, considered significant
+# taxa_sig.S = rownames(res.S[1:20, ]) # select bottom 20
+# Su.species.rel <- transform_sample_counts(Su.species, function(x) x/sum(x)*100)
+# Su.rel.sig <- prune_taxa(taxa_sig.S, Su.species.rel)
+# 
+# ## IF ALL KEPT
+# # Su.species.rel <- transform_sample_counts(Su.species, function(x) x/sum(x)*100) # if all kept
+# # Su.class.rel <- transform_sample_counts(Su.class, function(x) x/sum(x)*100) # if all kept -- class
+# # Su.phylum <- tax_glom(Su.species.rel, taxrank = 'Phylum', NArm = FALSE)
+# 
+# matrix.Su <- t(as.data.frame(otu_table(Su.rel.sig)))
+# matrix.Su <- as.matrix(matrix.Su)
+# rownames(matrix.Su) <- as.character(tax_table(Su.rel.sig)[, "Species"])
+# results.df_Su <- data.frame(sample_data(Su.rel.sig))
+# 
+# # Define columns and rows by site and cover crops
+# heatmap_col.S = data.frame(
+#   'Cover crop' = as.factor(results.df_Su$cover_crop), 
+#   check.names = FALSE
+# )
+# 
+# rownames(heatmap_col.S) = rownames(results.df_Su)
+# 
+# # heatmap_row.S = data.frame(
+# #   Phylum = as.factor(tax_table(Su.rel.sig)[, "Phylum"])
+# # )
+# # 
+# # rownames(heatmap_row.S) = rownames(matrix.Su)
+# 
+# # Define colours to fill heatmap boxes
+# # phylum_col.S = RColorBrewer::brewer.pal(length(levels(heatmap_row.S$Phylum)), "Paired")
+# # names(phylum_col.S) = levels(heatmap_row.S$Phylum)
+# box_colours.S = list(
+#   `Cover crop` = c(`Buckwheat` = "#c44601", `Buffalo Grass` = "#FCC9B5", `Crescendo Ladino Clover` = "#E1B239", 
+#                    `Field Pea` = "#FCF2C7", `Mustard White` = "#A3D8C6", `Phacelia` = "#329973",
+#                    `Spring Lentil` = "#7D99E6", `Turnip` = "#E0D2EB", `Winfred Brassica` =  "#98669F")
+#   # Phylum = phylum_col.S
+# )
+# 
+# # Heatmap of most significant 20 species grouped by cover crop and phylum
+# png(file = "figures/heatmap_20species_Su.png", height = 500, width = 1200)
+# ComplexHeatmap::pheatmap(matrix.Su, scale= "row", border_color = "gray60",
+#                          cellwidth = 15, cellheight = 15,
+#                          fontsize = 16,
+#                          annotation_col = heatmap_col.S, 
+#                          # annotation_row = heatmap_row.S, 
+#                          annotation_colors = box_colours)
+# dev.off()
 
 
 

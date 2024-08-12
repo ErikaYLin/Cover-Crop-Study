@@ -478,23 +478,23 @@ CC_vennbox <- plot_grid(venn, CC_boxplots4, ncol = 2)
 ggsave(file = "figures/CC_vennbox.png", plot = CC_vennbox, width = 6.86, height = 4.7)
 
 
-png(file = "figures/richness_boxplot.png", height = 900, width = 1000)
-ggplot(data = results.df, aes(y = rich)) +
-  geom_boxplot(aes(fill = cover_crop)) +
-  scale_fill_manual(values = palette) +
-  facet_wrap(vars(site))
-dev.off()
-
-
-png(file = "figures/richness_vs_PD.png", height = 900, width = 1000)
-ggplot(data = results.df, aes(x = rich, y = PD)) +
-  geom_point(aes(fill = cover_crop), size = 4, shape = 21) +
-  geom_smooth(method = "gam", method.args= list(family = "Gamma"), se = F,
-              colour = "black") +
-  scale_fill_manual(values = palette) +
-  scale_colour_manual("black") +
-  facet_wrap(vars(site))
-dev.off()
+# png(file = "figures/richness_boxplot.png", height = 900, width = 1000)
+# ggplot(data = results.df, aes(y = rich)) +
+#   geom_boxplot(aes(fill = cover_crop)) +
+#   scale_fill_manual(values = palette) +
+#   facet_wrap(vars(site))
+# dev.off()
+# 
+# 
+# png(file = "figures/richness_vs_PD.png", height = 900, width = 1000)
+# ggplot(data = results.df, aes(x = rich, y = PD)) +
+#   geom_point(aes(fill = cover_crop), size = 4, shape = 21) +
+#   geom_smooth(method = "gam", method.args= list(family = "Gamma"), se = F,
+#               colour = "black") +
+#   scale_fill_manual(values = palette) +
+#   scale_colour_manual("black") +
+#   facet_wrap(vars(site))
+# dev.off()
 
 # Beta Diversity/Co-Occurrence Affinity ----
 
@@ -679,8 +679,9 @@ results.df$cover_crop <- as.factor(results.df$cover_crop)
 results.df2$site <- as.factor(results.df2$site)
 results.df2$cover_crop <- as.factor(results.df2$cover_crop)
 
-# Source the code from the betals.r script
+# # Source the code from the betals.r script
 source(file = "functions/betals.r")
+# library(mgcv)
 
 
 model.site <- gam(list(rich ~ site,  # random effects for sites, PD as a function of cover crop
@@ -694,7 +695,7 @@ summary(model.site)
 # GLMM plot for species richness
 model <- gam(list(rich ~ cover_crop + s(site, bs = "re"),  # random effects for sites, PD as a function of cover crop
                   ~ cover_crop + s(site, bs = "re")),
-             data = results.df2,
+             data = results.df,
              family = gammals())  # gamma location scale distribution for values from 0 to infinity (betals for 0-1)
 
 summary(model)
@@ -702,7 +703,7 @@ summary(model)
 # GLMM plot for Shannon
 model2 <- gam(list(Shannon ~ cover_crop + s(site, bs = "re"),  # random effects for sites, PD as a function of cover crop
                   ~ cover_crop + s(site, bs = "re")),
-             data = results.df2,
+             data = results.df,
              family = gammals())  # gamma location scale distribution for values from 0 to infinity (betals for 0-1)
 
 summary(model2)
@@ -788,7 +789,7 @@ plot(C1_tree$tree, label.tips = NULL)
 # Abundance bar plots ----
 
 # Abundance plots were built following the workflow of Hui (2021):
-# https://www.yanh.org/2021/01/01/microbiome-r/#build-phyloseq-project
+# https://www.yanh.org/2021/01/01/microbiome-r/#abundance-bar-plot
 ps.melt <- list()
 for (i in 1:length(ps.list)) {
   # Calculate relative sample counts of taxa
@@ -982,6 +983,91 @@ LGDS1 <-
             height = 1
   )
 ggsave("figures/heatmap_fixlgd_cc.png", plot = hm_legend, width = 6.86, height = 4.5)
+
+
+## Heatmap soil ----
+
+# Import soil characteristics data
+soil.df <- read.csv("data/Table S1.2 Soil Properties Heatmap.csv")
+
+# Select mean soil nutrient measures
+soil.mean <- t(soil.df[which(soil.df$Measure == "Mean"),c(3:13)])
+soil.log <- log(soil.mean)
+
+# Define column annotation and colours
+col.annot <- data.frame(Site = as.factor(soil.mean$Site), check.names = FALSE)
+col_fill1 <- list(Site = c(`Covert` = "red", `Kalala` = "blue", `SuRDC` = "gold"))
+
+# Heatmap annotation
+annot <- ComplexHeatmap::HeatmapAnnotation(df = col.annot, name = "Site", col = col_fill1, which = "column",
+                                                annotation_name_gp = grid::gpar(fontsize = 8), simple_anno_size = grid::unit(2, "mm"), show_legend = FALSE)
+
+# png(file = "figures/heatmap_soil.png", width = 3.23, height = 4, units = "in", res = 600, bg = "transparent")
+soil.heatmap <- grid.grabExpr(ComplexHeatmap::draw(
+  ComplexHeatmap::Heatmap(soil.log, name = "ppm", col = circlize::colorRamp2(c(0, 4, 8), c("#190087", "#E72476", "#FAEC50")),
+                          show_row_names = TRUE,
+                          row_names_gp = grid::gpar(fontsize = 10),
+                          show_row_dend = FALSE,
+                          show_column_names = FALSE,
+                          show_column_dend = FALSE,
+                          # rect_gp = grid::gpar(col = "lightgray", lwd = 0.5),
+                          top_annotation = annot,
+                          show_heatmap_legend = TRUE,
+                          heatmap_legend_param = list(title = "ppm", 
+                                                      at = c(0, 2.3026, 4.605, 
+                                                             6.215, 8.006), 
+                                                      labels = c("0", "10", "100", 
+                                                                 "500", "3000"))),
+  background = "transparent"))
+# heatmap_legend_param = list(labels_gp = grid::gpar(fontsize = 8)))
+# dev.off()
+
+# "#D2048A", "#830087"
+# c(0, 10, 50, 250, 2000), c("#190087", "#E72476", "#F1536E", "#F19253", "#FAEC50")
+
+# Legend for site annotation
+hm.legend <-
+  ggplot(data = soil.df) +
+  geom_tile(aes(x = Measure, y = Site, fill = Site)) +
+  scale_fill_manual(values = c("red", "blue", "gold")) +
+  labs(fill = "Site") +
+  theme(legend.title = element_text(size = 10, family = "sans", face = "bold"),
+        legend.text = element_text(size = 10, family = "sans"),
+        legend.position = "inside",
+        legend.position.inside = c(0.86,0.75),#c(1, 0.45), # horizontal, vertical
+        legend.direction = "vertical",
+        legend.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"),
+        legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        # legend.key.spacing.x = unit(2, "pt"),
+        legend.key.height = unit(0.15, "cm"),
+        legend.key.width = unit(0.44, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"))
+
+# Extract legend
+lgd <- ggpubr::get_legend(hm.legend)
+grid.newpage()
+grid.draw(lgd)
+
+# Inset legends into heatmap
+Fig.heatmap <-
+  ggdraw(lgd) +
+  draw_plot(soil.heatmap,
+            x = 0,
+            y = 0,
+            width = 0.93,
+            height = 1) 
+  # draw_label("D", x = 0.025, y = 0.94,
+  #            fontfamily = "sans",
+  #            fontface = "bold",
+  #            size = 12)
+ggsave(file = "figures/heatmap_soil_log.png", plot = Fig.heatmap, width = 3.23, height = 4)
+# ggsave(file = "figures/heatmap_soil_full.png", plot = Fig.heatmap, width = 3.23, height = 4)
+
+
+
+
+
 
 
 

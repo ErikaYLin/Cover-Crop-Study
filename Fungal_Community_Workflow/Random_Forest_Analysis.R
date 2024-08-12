@@ -426,6 +426,7 @@ PCA_FIG.site2 <-
   ylab(DIM_2.site2) +
   xlab(DIM_1.site2) + 
   labs(tag = "C") +
+  guides(colour = guide_legend(override.aes = list(size = 1.2))) +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         plot.tag = element_text(size = 12, family = "sans", face = "bold"),
@@ -818,7 +819,7 @@ hmap_col2 <- data.frame(Site = as.factor(sample_data(ps.species)$site), check.na
 hcol_fill = list(`Cover crop` = c(`Buckwheat` = "#c44601", `Buffalo Grass` = "#FCC9B5", `Crescendo Ladino Clover` = "#E1B239", 
                                  `Field Pea` = "#FCF2C7", `Mustard White` = "#A3D8C6", `Phacelia` = "#329973",
                                  `Spring Lentil` = "#7D99E6", `Turnip` = "#E0D2EB", `Winfred Brassica` =  "#98669F"))
-hcol_fill2 <- list(Site = c(`Covert` = "red", `Kalala` = "blue", `SuRDC` = "yellow"))
+hcol_fill2 <- list(Site = c(`Covert` = "red", `Kalala` = "blue", `SuRDC` = "gold"))
 
 # Heatmap annotations
 hannot_col <- ComplexHeatmap::HeatmapAnnotation(df = hmap_col, name = "Cover crop", col = hcol_fill, which = "column",

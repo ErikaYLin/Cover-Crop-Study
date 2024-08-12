@@ -3,7 +3,7 @@
 # Load in the data
 load(file = "RDS/results_covercrop_noGreenhouse.rda")
 results.df <- readRDS(file = "RDS/results.df_noGreenhouse.rds")
-plant_pathogens <- read.csv(file = "Fungal_Community_Workflow/Plant_Pathogens.csv")
+plant_pathogens <- read.csv(file = "data/Plant_Pathogens.csv")
 
 # Load packages
 library(phyloseq)
@@ -123,7 +123,7 @@ pathogen.melt <- psmelt(pathogen.rel)
 pathogen.melt$pathogenic_taxon <- pathogen.only$pathogenic_taxon
 
 # Organize the data for abundance plots
-pathogen.melt <- pathogen.melt %>%
+pathogen.melt1 <- pathogen.melt %>%
   group_by(sample.ID, cover_crop, pathogenic_taxon) %>%
   summarise(Abundance = sum(Abundance))
 
@@ -140,36 +140,33 @@ brassica <- get_phylopic("f20144d1-d243-4cca-aba2-24bce6c81d42")
 
 # Relative abundance bar plot
 FIG <-
-  ggplot(pathogen.melt, aes(x = sample.ID, y = Abundance, fill = pathogenic_taxon)) + 
+  ggplot(pathogen.melt1, aes(x = sample.ID, y = Abundance, fill = pathogenic_taxon)) + 
   geom_bar(stat = "identity", aes(fill = pathogenic_taxon)) + 
-  labs(x = "", y= "Abundance (%)", fill = "Taxon") +
+  labs(x = "", y= "Abundance (%)", fill = "Taxon", tag = "A") +
   facet_wrap(~cover_crop, scales = "free_x", nrow = 1,
              labeller = labeller(cover_crop = label_wrap_gen(width = 10))) +
   theme_classic() +
   scale_fill_manual(values = palette2) + 
   scale_y_continuous(limits = c(0,110), expand = c(0,0)) +
-  theme(# plot.tag = element_text(size = 14, family = "sans", face = "bold"),
-    # plot.tag.position = c(0.83, 0.85),
-    axis.title.y = element_text(size = 10, family = "sans", face = "bold"), # vjust = 2.5),
-    axis.text.y = element_text(size = 7, family = "sans"),
-    axis.text.x  = element_text(size = 2, angle = 45),
-    axis.line.y = element_line(linewidth = 0.2),
-    axis.line.x = element_line(linewidth = 0.2),
-    axis.ticks.x = element_line(linewidth = 0.2),
-    # legend.position = "none",
-    legend.text = element_text(size = 7, family = "sans", face = "bold"),
-    legend.title = element_text(size = 8, family = "sans", face = "bold"),
-    # legend.position = c(0.82, 0.86), #horizontal, vertical
-    legend.key.height = unit(0.32, "cm"),
-    legend.key = element_blank(),
-    legend.background = element_rect(fill = "transparent"),
-    panel.background = element_rect(fill = "transparent"),
-    # panel.border = element_rect(linewidth = 0.3, fill = NA),
-    strip.text.x = element_text(size = 6, family = "sans", face = "bold"),
-    strip.background = element_blank(),
-    panel.spacing = unit(0.15, "lines"),
-    plot.background = element_rect(fill = "transparent", color = NA),
-    plot.margin = unit(c(0.2,0.1,0.2,0.2), "cm")) #top, right, bottom, left
+  theme(plot.tag = element_text(size = 14, family = "sans", face = "bold"),
+        plot.tag.position = c(0.02, 0.95),
+        axis.title.y = element_text(size = 10, family = "sans", face = "bold"), # vjust = 2.5),
+        axis.text.y = element_text(size = 7, family = "sans"),
+        axis.text.x  = element_text(size = 2, angle = 45),
+        axis.line.y = element_line(linewidth = 0.2),
+        axis.line.x = element_line(linewidth = 0.2),
+        axis.ticks.x = element_line(linewidth = 0.2),
+        legend.text = element_text(size = 7, family = "sans", face = "bold"),
+        legend.title = element_text(size = 8, family = "sans", face = "bold"),
+        legend.key.height = unit(0.32, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"),
+        panel.background = element_rect(fill = "transparent"),
+        strip.text.x = element_text(size = 6, family = "sans", face = "bold"),
+        strip.background = element_blank(),
+        panel.spacing = unit(0.15, "lines"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0.2,0.2), "cm")) #top, right, bottom, left
 
 ggsave("figures/pathogens_rel_barplot_CC.png", plot = FIG, width = 6.86, height = 4.5)
 
@@ -287,6 +284,89 @@ FIG7 <-
 
 ggsave("figures/pathogen-nonpathogen_CC.png", plot = FIG7, width = 6.86, height = 4.5)
 
+# Arrange figures
+FIG8 <- plot_grid(FIG2, FIG7, ncol = 1)
+ggsave("figures/pathogens_barplots.png", plot = FIG8, width = 6.86, height = 7.8)
+
+# Relative abundance grouped by site
+# Represent site with a number (characters lost in merge_samples())
+ps.pathogen <- pathogen.ps
+sample_data(ps.pathogen)$treat <- paste(sample_data(ps.pathogen)$site, sample_data(ps.pathogen)$cover_crop, sep = ".")
+# sample_data(ps.pathogen)$treatment <- gsub("Covert", 0, sample_data(ps.pathogen)$site)
+# sample_data(ps.pathogen)$treatment <- gsub("Kalala", 1, sample_data(ps.pathogen)$site) 
+# sample_data(ps.pathogen)$treatment <- gsub("SuRDC", 100, sample_data(ps.pathogen)$site)
+
+# Organize the data for abundance plots
+pathogen.CC <- merge_samples(ps.pathogen, "treat", fun = sum)
+pathogen.rel3 <- transform_sample_counts(pathogen.CC, function(x) x/sum(x)*100)
+pathogen.melt3 <- psmelt(pathogen.rel3)
+
+# Add cover crop and site names back to data frame
+for (n in 1:nrow(pathogen.melt3)) {
+  if(grepl("Covert", pathogen.melt3$Sample[n])){
+    pathogen.melt3$site[n] = "Covert"
+  } else if (grepl("Kalala", pathogen.melt3$Sample[n])){
+    pathogen.melt3$site[n] = "Kalala"
+  } else if (grepl("SuRDC", pathogen.melt3$Sample[n])){
+    pathogen.melt3$site[n] = "SuRDC"
+  } 
+  if (grepl("Buck", pathogen.melt3$Sample[n])){
+    pathogen.melt3$cover_crop[n] = "Buckwheat"
+  } else if (grepl("Buff", pathogen.melt3$Sample[n])){
+    pathogen.melt3$cover_crop[n] = "Buffalo Grass"
+  } else if (grepl("Cres", pathogen.melt3$Sample[n])){
+    pathogen.melt3$cover_crop[n] = "Crescendo Ladino Clover"
+  } else if (grepl("Pea", pathogen.melt3$Sample[n])){
+    pathogen.melt3$cover_crop[n] = "Field Pea"
+  } else if (grepl("Mustard", pathogen.melt3$Sample[n])){
+    pathogen.melt3$cover_crop[n] = "Mustard White"
+  } else if (grepl("Phac", pathogen.melt3$Sample[n])){
+    pathogen.melt3$cover_crop[n] = "Phacelia"
+  } else if (grepl("Spring", pathogen.melt3$Sample[n])){
+    pathogen.melt3$cover_crop[n] = "Spring Lentil"
+  } else if (grepl("Turnip", pathogen.melt3$Sample[n])){
+    pathogen.melt3$cover_crop[n] = "Turnip"
+  } else if (grepl("Brass", pathogen.melt3$Sample[n])){
+    pathogen.melt3$cover_crop[n] = "Winfred Brassica"
+}}
+
+pathogen.melt3 <- pathogen.melt3 %>%
+  group_by(cover_crop, site, pathogenic_taxon) %>%
+  summarise(Abundance = sum(Abundance))
+
+# Relative abundance bar plot
+FIG9 <-
+  ggplot(pathogen.melt3, aes(x = cover_crop, y = Abundance, fill = pathogenic_taxon)) + 
+  geom_bar(stat = "identity", aes(fill = pathogenic_taxon)) + 
+  labs(x = "", y= "Abundance (%)", fill = "Taxon") +
+  facet_wrap(~site) + #, scales = "free_x", nrow = 1,
+             #labeller = labeller(cover_crop = label_wrap_gen(width = 10))) +
+  theme_classic() +
+  scale_fill_manual(values = palette2) + 
+  scale_y_continuous(limits = c(0,110), expand = c(0,0)) +
+  theme(#plot.tag = element_text(size = 14, family = "sans", face = "bold"),
+        #plot.tag.position = c(0.02, 0.95),
+        axis.title = element_text(size = 10, family = "sans", face = "bold"),
+        axis.text.y = element_text(size = 7, family = "sans"),
+        axis.text.x  = element_text(size = 4, angle = 90, vjust = 0.5),
+        axis.line.y = element_line(linewidth = 0.2),
+        axis.line.x = element_line(linewidth = 0.2),
+        axis.ticks.x = element_line(linewidth = 0.2),
+        legend.text = element_text(size = 7, family = "sans", face = "bold"),
+        legend.title = element_text(size = 8, family = "sans", face = "bold"),
+        legend.key.height = unit(0.32, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"),
+        panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.3, fill = NA),
+        strip.text.x = element_text(size = 10, family = "sans", face = "bold"),
+        strip.background = element_blank(),
+        panel.spacing = unit(0.15, "lines"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0.2,0.2), "cm")) #top, right, bottom, left
+
+ggsave("figures/pathogens_relative_site.png", plot = FIG9, width = 6.86, height = 4.5)
+
 
 # Absolute abundance bar plot ----
 # Combine abundance data and taxa
@@ -380,13 +460,13 @@ pathogen.melt4 <- pathogen.melt4 %>%
 FIG5 <-
   ggplot(pathogen.melt4, aes(x = cover_crop, y = Abundance, fill = pathogenic_taxon)) + 
   geom_bar(stat = "identity", aes(fill = pathogenic_taxon)) + 
-  labs(x = "", y= "Abundance", fill = "Taxon", tag = "A") +
+  labs(x = "", y= "Abundance", fill = "Taxon") +
   facet_wrap(~site) +
   theme_classic() +
   scale_fill_manual(values = palette2) + 
   scale_x_discrete(labels = function(x) stringr::str_wrap(x, width = 10)) +
-  theme(plot.tag = element_text(size = 14, family = "sans", face = "bold"),
-    plot.tag.position = c(0.02, 0.95),
+  theme(#plot.tag = element_text(size = 14, family = "sans", face = "bold"),
+    #plot.tag.position = c(0.02, 0.95),
     axis.title = element_text(size = 10, family = "sans", face = "bold"),
     axis.text.y = element_text(size = 7, family = "sans"),
     axis.text.x  = element_text(size = 4, angle = 90, vjust = 0.5),
@@ -408,6 +488,4 @@ FIG5 <-
 
 ggsave("figures/pathogens_absolute_site.png", plot = FIG5, width = 6.86, height = 4.5)
 
-# Arrange figures
-FIG8 <- plot_grid(FIG5, FIG7, ncol = 1)
-ggsave("figures/pathogens_barplots.png", plot = FIG8, width = 6.86, height = 7.8)
+

@@ -1,3 +1,113 @@
+# NEW CODE ----
+
+# Install and load `mga` from GitHub
+devtools::install_github("https://github.com/ErikaYLin/mga")
+library(mga)
+
+# Load sample metadata
+samdf <- read.csv("data/Mapping file for ITS sequencing.csv")
+
+# Load reference FASTA file for taxonomic classification
+fungi <- "./sh_general_release_dynamic_29.11.2022.fasta" # UNITE General Release ITS reference FASTA
+
+# Define filter path for forward and reverse reads of each sample fastq file
+seq_path <- "./CC_Seq"  # directory containing extracted fastq files
+
+# Sort forward and reverse reads to be in the same order
+fnFs <- sort(list.files(seq_path, pattern="_R1_001.fastq.gz"))
+fnRs <- sort(list.files(seq_path, pattern="_R2_001.fastq.gz"))
+# Specify full file path to fnFs and fnRs
+fnFs <- file.path(seq_path, fnFs)
+fnRs <- file.path(seq_path, fnRs)
+
+# Extract sample names
+sNames <- sapply(strsplit(fnFs, "_"), `[`, 2)
+sNames <- sapply(strsplit(sNames, "/"), `[`, 2)
+
+# Define file names for filtered fastq.gz files
+filt_path <- file.path(seq_path, "filtered")
+# New subdirectory for filtered files if one does not already exist
+if(!file_test("-d", filt_path)) dir.create(filt_path)
+# Assign file paths
+filtFs <- file.path(filt_path, paste0(sNames, "_F_filt.fastq.gz"))
+filtRs <- file.path(filt_path, paste0(sNames, "_R_filt.fastq.gz"))
+
+# Inspect the first 2 forward reads:
+dada2::plotQualityProfile(fnFs[1:2])  ## forward reads maintain high throughput quality, trimmed at position 230
+# Inspect the first 2 reverse reads:
+dada2::plotQualityProfile(fnRs[1:2])  ## reverse read quality drops around position 180-200, trimmed at position 180
+## first 10 bps also removed due to potential pathological issues
+
+out <- dada2::filterAndTrim(fnFs, filtFs, fnRs, filtRs,
+                            truncLen = c(230,180),
+                            trimLeft = 10,
+                            maxN = 0,
+                            maxEE = c(2,2),
+                            truncQ = 2,
+                            rm.phix = TRUE, 
+                            compress = TRUE,
+                            multithread = FALSE)
+# Inspect filter results
+head(out)
+
+
+# Empty list for storing the mga results
+RESULTS <- list()
+
+# Loop the analysis process for every file in the directory
+for (i in 1:length(fnFs)){
+  
+  # Assign metadata to be input as a list for mga argument
+  meta_data <- list()
+  for (j in 1:length(fnFs)){
+    
+    ID <- sapply(strsplit(fnFs[i], "_"), `[`, 2)
+    ID <- sapply(strsplit(ID, "/"), `[`, 2)
+    meta_data[[j]] <- as.list(samdf[samdf$sample.ID %in% ID,])
+  }
+  
+  # Store results for each output from the `mga` in list
+  RESULTS[[i]] <- mga(fastq.Fs = fnFs[i],
+                      fastq.Rs = fnRs[i], # file paths for forward and reverse raw fastq files
+                      filtFs = filtFs[i],
+                      filtRs = filtRs[i], # file paths for filtered fastq files
+                      refFasta = fungi,
+                      metadata = meta_data[[j]],
+                      tree.args = list(k = 4, 
+                                       inv = 0.2,
+                                       model = "GTR",
+                                       rearrangement = "stochastic"), 
+                      network.args = list(type = "taxa",
+                                          distance = "jaccard",
+                                          max.dist = 0.35))
+  
+  # Save the results as they are produced, in case of crashes/errors
+  save(RESULTS, file = "RDS/preliminary_results_CC_mga.rda")
+}
+
+# # Remove Greenhouse samples [[44:141]]
+# RESULTS <- RESULTS[c(1:43, 142:221)]
+# # Save modified `ps.net` output
+# save(RESULTS, file = "RDS/results_CC_mga.rda")
+
+# Extract data frame of diversity metrics from each mga object 
+RES <- list()
+for (i in 1:length(RESULTS)){
+  
+  RES[[i]] <- RESULTS[[i]]$results.samples
+}
+
+# Build combined data frame of metrics
+results.df <- do.call(rbind, RES)
+results.df <- dplyr::relocate(results.df, "sample.ID", .before = "Shannon") # move sample.ID column to leftmost
+# Save data frame of results
+saveRDS(results.df, file = "RDS/results.df_mga.rds")
+
+
+
+
+# OLD CODE ----
+
 ## TEST: SuRDC Sample S1 ----
 
 # Reference FASTA file paths:

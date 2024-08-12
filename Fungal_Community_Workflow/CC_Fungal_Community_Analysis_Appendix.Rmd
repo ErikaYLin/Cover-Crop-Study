@@ -1,0 +1,1721 @@
+---
+title: "Appendix for Cover Crop Fungal Community Analysis"
+author: "Erika Y. Lin, Daniel Rosa, Mehdi Sharifi, Selina Spence, Michael J. Noonan, Miranda Hart"
+date: "`r Sys.Date()`"
+output: 
+  pdf_document: default
+  html_document: default
+bibliography: CC_references.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup2, message = FALSE, warning = FALSE}
+
+# Load requisite packages from Bioconductor
+library(BiocStyle)
+library(BiocGenerics)
+library(phyloseq)
+
+# Load additional packages
+library(tidyverse)  # dplyr and piping
+library(ggvenn)  # Venn diagrams
+library(ggplot2)  # data visualization
+library(rphylopic)  # for icons
+library(CooccurrenceAffinity)  # calculates co-occurrence affinity
+library(nlme)  # linear models
+library(cowplot)  # figure layout
+library(grid)  # figure layout
+library(gridExtra)  # figure layout
+library(randomForest)  # random forest analysis
+library(ellipse)  # drawing ellipses
+library(FactoMineR)  # principal component analysis
+library(ggridges)  # density plots
+library(ComplexHeatmap)  # heat maps
+
+# Install and load `mga` from GitHub
+devtools::install_github("https://github.com/ErikaYLin/mga")
+library(mga)
+
+# Colour palettes
+## cover crops
+palette <- c("#c44601", "#FCC9B5", "#E1B239", "#FCF2C7", "#A3D8C6", "#329973",
+             "#7D99E6", "#E0D2EB", "#98669F", "#353A70", "#814B08", "gray60", "black")
+## abundance bar plot classes
+palette2 <- c("#005F73", "#0A9396", "#94D2BD", "#7A9EC6", "#E9D8A6", "#fbb13c",
+              "#CA6702", "#9B2226", "#9F72AA", "#6d597a", "#355070")
+## pathogenic taxa
+palette3 <- c(environment(khroma::colour("light"))[["col_colors"]][c(1:4)],
+              environment(khroma::colour("pale"))[["col_colors"]][3],
+              environment(khroma::colour("light"))[["col_colors"]][5])
+
+```
+
+# Sequence Data Processing with `mga`
+
+Sequencing FASTQ files were filtered and trimmed following the workflow by @callahan2016bioconductor. Sequencing quality maintained high throughput quality for both forward and reverse reads, trimmed at positions 230 and 180, respectively. As suggested by @callahan2016bioconductor, the first 10 bps were also removed due to potential pathological issues. We used the `mga` package (v0.1.0; Lin et al., 2024) for comprehensive microbiome processing and analysis. We used the UNITE General Release ITS reference FASTA to assign taxonomy for the fungal DNA extracted from our soil samples. Default arguments for the `mga()` function were used in the analysis. The resulting `mga` objects and sample results were saved for our preliminary and subsequent analyses.
+
+```{r mga, eval = FALSE}
+
+# Load sample metadata
+samdf <- read.csv("data/Mapping file for ITS sequencing.csv")
+# Clean metadata
+colnames(samdf) <- samdf[2,] # fix column names
+samdf <- samdf[-c(1,2),] # remove empty and redundant rows
+
+# Load reference FASTA file for taxonomic classification
+fungi <- "./sh_general_release_dynamic_29.11.2022.fasta" # UNITE ITS ref FASTA
+
+# Define filter path for forward and reverse reads of each sample fastq file
+seq_path <- "./CC_Seq"  # directory containing extracted fastq files
+
+# Sort forward and reverse reads to be in the same order
+fnFs <- sort(list.files(seq_path, pattern="_R1_001.fastq.gz"))
+fnRs <- sort(list.files(seq_path, pattern="_R2_001.fastq.gz"))
+# Specify full file path to fnFs and fnRs
+fnFs <- file.path(seq_path, fnFs)
+fnRs <- file.path(seq_path, fnRs)
+
+# Extract sample names
+sNames <- sapply(strsplit(fnFs, "_"), `[`, 2)
+sNames <- sapply(strsplit(sNames, "/"), `[`, 2)
+
+# Define file names for filtered fastq.gz files
+filt_path <- file.path(seq_path, "filtered")
+# New subdirectory for filtered files if one does not already exist
+if(!file_test("-d", filt_path)) dir.create(filt_path)
+# Assign file paths
+filtFs <- file.path(filt_path, paste0(sNames, "_F_filt.fastq.gz"))
+filtRs <- file.path(filt_path, paste0(sNames, "_R_filt.fastq.gz"))
+
+# Inspect the first 2 forward reads:
+dada2::plotQualityProfile(fnFs[1:2])  
+## forward reads maintain high throughput quality, trimmed at position 230
+# Inspect the first 2 reverse reads:
+dada2::plotQualityProfile(fnRs[1:2])  
+## reverse read quality drops around position 180-200, trimmed at position 180
+## first 10 bps also removed due to potential pathological issues
+
+out <- dada2::filterAndTrim(fnFs, filtFs, fnRs, filtRs,
+                            truncLen = c(230,180),
+                            trimLeft = 10,
+                            maxN = 0,
+                            maxEE = c(2,2),
+                            truncQ = 2,
+                            rm.phix = TRUE, 
+                            compress = TRUE,
+                            multithread = FALSE)
+# Inspect filter results
+head(out)
+
+
+# Empty list for storing the mga results
+RESULTS <- list()
+
+# Loop the analysis process for every file in the directory
+for (i in 1:length(fnFs)){
+  
+  # Assign metadata to be input as a list for mga argument
+  meta_data <- list()
+  for (j in 1:length(fnFs)){
+    
+    ID <- sapply(strsplit(fnFs[i], "_"), `[`, 2)
+    ID <- sapply(strsplit(ID, "/"), `[`, 2)
+    meta_data[[j]] <- as.list(samdf[samdf$`sample-Id` %in% ID,])
+  }
+  
+  # Store results for each output from the `mga` in list
+  RESULTS[[i]] <- mga(fastq.Fs = fnFs[i],
+                      fastq.Rs = fnRs[i], # file paths for forward and reverse raw fastq files
+                      filtFs = filtFs[i],
+                      filtRs = filtRs[i], # file paths for filtered fastq files
+                      refFasta = fungi,
+                      metadata = meta_data[[j]],
+                      tree.args = list(k = 4, 
+                                       inv = 0.2,
+                                       model = "GTR",
+                                       rearrangement = "stochastic"), 
+                      network.args = list(type = "taxa",
+                                          distance = "jaccard",
+                                          max.dist = 0.35,
+                                          keep.isolates = TRUE))
+}
+
+# Extract data frame of diversity metrics from each mga object 
+RES <- list()
+for (i in 1:length(RESULTS)){
+  
+  RES[[i]] <- RESULTS[[i]]$results.samples
+}
+
+# Build combined data frame of metrics
+results.df <- do.call(rbind, RES)
+results.df <- dplyr::relocate(results.df, "sample.ID", .before = "Shannon")
+
+```
+
+```{r data, echo = FALSE}
+
+# Load data
+load(file = "RDS/CC_mga_results.rda")
+results.df <- readRDS(file = "RDS/results.df_CC_mga.rds")
+# load(file = "RDS/results_covercrop_noGreenhouse_fix.rda")
+# results.df <- readRDS(file = "RDS/results.df_noGreenhouse_fix.rds")
+
+```
+
+We extracted all `phyloseq` objects from the listed `mga` outputs and merged them to build an overall `phyloseq` object for all three sites. This step enabled easier subsequent handling of data for downstream analyses. Since the `merge_phyloseq()` function cannot combine phylogenetic trees with different numbers of tips, the final `phyloseq` object did not have a phylogenetic tree.
+
+```{r merge, warning = FALSE, message = FALSE}
+
+# Extract all phyloseq objects from RESULTS into a list
+ps.list <- list()
+for (i in 1:length(RESULTS)) {
+  ps.list[[i]] <- RESULTS[[i]]$ps
+}
+
+# Merge phyloseq OTU tables to return single combined OTU table
+ps_C1 <- ps.list[[1]]
+merge.otu <- otu_table(ps_C1) # Merging other OTU tables requires a base to add onto
+
+ps_otu <- list()
+for (i in 2:length(ps.list)) {
+  # Extract each phyloseq object from the list
+  ps_otu[[i]] <- ps.list[[i]]
+  merge.otu <- merge_phyloseq(otu_table(ps_otu[[i]]), merge.otu)
+}
+
+# Merge taxonomy 
+merge.tax <- tax_table(ps_C1)
+
+for (i in 2:length(ps.list)) {
+  # Extract each phyloseq object from the list
+  ps_otu <- ps.list[[i]]
+  merge.tax <- merge_phyloseq(tax_table(ps_otu), merge.tax)
+}
+
+rownames(results.df) <- results.df$sample.ID  # Needed for to create the phyloseq-class object
+
+# Create a new phyloseq-class object with all combined elements
+merge.ps <- phyloseq::phyloseq(otu_table(merge.otu),
+                                tax_table(merge.tax),
+                                sample_data(results.df))
+
+```
+
+# Site-wide Soil Properties
+
+We generated a heat map to visualize how macronutrient and micronutrient content varied in the soils of the three sites, which could have effects on soil fungal communities. Full site-wide measures of soil properties and soil classification are documented in Table S1.
+
+```{r soil_heatmap, message = FALSE, warning = FALSE, fig.width = 3.23, fig.height = 4, fig.cap = "Heat map of mean soil content of micro- and macro- nutrients in samples collected at a depth of 0-15 cm within each site. Results were reported on an oven dry (105C) weight basis in units of parts per million (ppm)."}
+
+# Import soil characteristics data
+soil.df <- read.csv("data/Table S1.2 Soil Properties Heatmap.csv")
+
+# Select mean soil nutrient measures
+soil.mean <- t(soil.df[which(soil.df$Measure == "Mean"),c(3:13)])
+soil.log <- log(soil.mean) # log-scale values to better differentiate
+
+# Define column annotation and colours as.factor(soil.mean$Site), check.names = FALSE
+col.annot <- data.frame(Site = c("Covert", "Kalala", "SuRDC"))
+col_fill1 <- list(Site = c(`Covert` = "red", `Kalala` = "blue", `SuRDC` = "gold"))
+
+# Heat map annotation
+annot <- ComplexHeatmap::HeatmapAnnotation(df = col.annot, name = "Site", 
+                                           col = col_fill1, which = "column",
+                                           annotation_name_gp = gpar(fontsize = 8), 
+                                           simple_anno_size = unit(2, "mm"),
+                                           show_legend = FALSE)
+
+# Construct heat map
+soil.heatmap <- grid.grabExpr(ComplexHeatmap::draw(
+  ComplexHeatmap::Heatmap(soil.log, name = "log ppm", 
+                          col = circlize::colorRamp2(c(0, 4, 8), 
+                                                     c("#190087", "#E72476", "#FAEC50")),
+                          show_row_names = TRUE,
+                          row_names_gp = grid::gpar(fontsize = 10),
+                          show_row_dend = FALSE,
+                          show_column_names = FALSE,
+                          show_column_dend = FALSE,
+                          top_annotation = annot,
+                          show_heatmap_legend = TRUE,
+                          heatmap_legend_param = list(title = "ppm", 
+                                                      at = c(0, 2.3026, 4.605, 
+                                                             6.215, 8.006), 
+                                                      labels = c("0", "10", "100", 
+                                                                 "500", "3000"))),
+  background = "transparent"))
+# legend scale was exponentiated from the log-scale
+
+# Tile plot to build legend for site annotation
+hm.legend <-
+  ggplot(data = soil.df) +
+  geom_tile(aes(x = Measure, y = Site, fill = Site)) +
+  scale_fill_manual(values = c("red", "blue", "gold")) +
+  labs(fill = "Site") +
+  theme(legend.title = element_text(size = 10, family = "sans", face = "bold"),
+        legend.text = element_text(size = 10, family = "sans"),
+        legend.position = "inside",
+        legend.position.inside = c(0.86,0.75),
+        legend.direction = "vertical",
+        legend.margin = ggplot2::margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"),
+        legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        legend.key.height = unit(0.15, "cm"),
+        legend.key.width = unit(0.44, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"))
+
+# Extract legend
+lgd <- ggpubr::get_legend(hm.legend)
+
+# Inset legend into heatmap
+FIG1 <-
+  ggdraw(lgd) +
+  draw_plot(soil.heatmap,
+            x = 0,
+            y = 0,
+            width = 0.93,
+            height = 1) 
+FIG1
+
+```
+
+# Overview of Soil Communities
+
+## Venn diagram
+
+We aggregated our results by species to compare the number of unique species at each of three experimental sites, as well as the number of species shared by sites. Our sites were vineyards in the Okanagan Valley, British Columbia, Canada: i) Covert Farms Family Estate (henceforth ‘Covert’), ii) an experimental farm Agriculture and Agri-food Canada’s Summerland Research and Development Centre (henceforth ‘SuRDC’), and iii) Kalala Organic Estate Winery (henceforth ‘Kalala’).
+
+```{r venn, warning = FALSE, message = FALSE, fig.cap = "Venn diagram counting the unique fungal species found in soil samples from each site (Covert, Kalala, SuRDC), as well as species shared across sites.", fig.width = 3.23, fig.height = 3.5}
+
+# Agglomerate by species for overall OTU table
+ps.species <- tax_glom(merge.ps, taxrank = 'Species', NArm = TRUE)
+
+# Merge samples by site
+sitegroup <- merge_samples(otu_table(ps.species), 
+                           group = sample_data(ps.species)$site, fun = sum)
+sitegroup <- t(as.data.frame(otu_table(sitegroup)))
+
+# Replace sequences with species names
+venndata <- as.data.frame(sitegroup)
+taxaps <- as.data.frame(tax_table(ps.species))
+rownames(venndata) <- paste(taxaps$Genus, taxaps$Species, sep = ".")
+
+# Determine species presence/absence at each site
+for (i in 1:nrow(venndata)) {
+  if (venndata[i,1] > 0) {  # TRUE if present
+    venndata[i,1] <- row.names(venndata[i,])
+  } else if (venndata[i,1] == 0) {  # FALSE if absent
+    venndata[i,1] <- NA} 
+  if (venndata[i,2] > 0) {  # TRUE if present
+    venndata[i,2] <- row.names(venndata[i,])
+  } else if (venndata[i,2] == 0) {  # FALSE if absent
+    venndata[i,2] <- NA}
+  if (venndata[i,3] > 0) {  # TRUE if present
+    venndata[i,3] <- row.names(venndata[i,])
+  } else if (venndata[i,3] == 0) {  # FALSE if absent
+    venndata[i,3] <- NA}
+}
+venndata <- as.list(venndata)
+
+# Create venn diagram that compares the number of unique species across sites
+venn <-
+  ggvenn(venndata, columns = c("Covert", "Kalala", "SuRDC"),
+         fill_color = c("red", "blue", "gold"),
+         stroke_size = 0.5, set_name_size = 4, text_size = 2.4) +
+  labs(tag = "A") +
+  theme(plot.background = element_rect(colour = "transparent"),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.08, 0.97)) 
+venn
+
+```
+
+## Comparison of Diversity Measures 
+
+We created boxplots to determine differences in measures of community diversity between cover crops and across sites. Measures assessed included phylogenetic diversity, species richness, Simpson's diversity index, and Shannon's diversity index.
+
+```{r diversity_boxplots, warning = FALSE, message = FALSE, fig.width = 6.86, fig.height = 5.5, fig.cap = "Boxplots comparing measures of community diversity: (A) phylogenetic diversity, (B) species richness, (C) Simpson's Diversity index, and (D) Shannon's H, between cover crop species and across sites."}
+
+# Boxplot for phylogenetic diversity
+plot1 <- 
+  ggplot(data = results.df) +
+  geom_boxplot(aes(y = PD, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  
+  scale_y_log10() +
+  scale_fill_manual(values = palette) +
+  labs(fill = NULL, y = "Phylogenetic Diversity", tag = "A") +
+  facet_wrap(vars(site)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", 
+                                    face = "bold", vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        # axis.title.x = element_text(size = 10, family = "sans", face = "bold"),
+        legend.position = "none",
+        panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.5, fill = NA),
+        panel.spacing = unit(0.2, "lines"),
+        strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+# Boxplot for species richness
+plot2 <-
+  ggplot(data = results.df) +
+  geom_boxplot(aes(y = rich, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  
+  labs(fill = NULL, y = "Species Richness", tag = "B") +
+  scale_fill_manual(values = palette) +
+  facet_wrap(vars(site)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", 
+                                    face = "bold", vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        legend.text = element_text(size = 4.2, family = "sans", face = "bold"),
+        legend.position = c(0.84, 0.84), # horizontal, vertical
+        legend.key.height = unit(0.16, "cm"),
+        legend.key.width = unit(0.14, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"),
+        panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.5, fill = NA),
+        panel.spacing = unit(0.2, "lines"),
+        strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+# Boxplot for Simpson's diversity
+plot3 <-
+  ggplot(data = results.df) +
+  geom_boxplot(aes(y = Simpson, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  
+  labs(fill = NULL, y = "Simpson Index", tag = "C") +
+  scale_fill_manual(values = palette) +
+  scale_y_continuous(limits = c(0.77,1.03), expand = c(0,0)) +
+  facet_wrap(vars(site)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", 
+                                    face = "bold", vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        legend.position = "none",
+        panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.5, fill = NA),
+        panel.spacing = unit(0.2, "lines"),
+        strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+# Boxplot for Shannon's diversity
+plot4 <-
+  ggplot(data = results.df) +
+  geom_boxplot(aes(y = Shannon, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  
+  labs(fill = NULL, y = "Shannon's Diversity", tag = "D") +
+  scale_y_log10() +
+  scale_fill_manual(values = palette) +
+  facet_wrap(vars(site)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", 
+                                    face = "bold", vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        legend.position = "none",
+        panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.5, fill = NA),
+        panel.spacing = unit(0.2, "lines"),
+        strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+# Combine boxplots
+CC_boxplots <- plot_grid(plot1, plot2, plot3, plot4, ncol = 2)
+CC_boxplots
+
+```
+
+To detect differences in soil fungal communities across cover crop regardless of site, we modeled the community diversity measures as a function of cover crop species using generalized linear mixed effect models, with a random effect for site. A gamma location-scale model with a log-link was used for all measures that ranged among positive values (0,$\infty$), while a beta location-scale model was used for Simpson's diversity, as its values are proportions ranging [0,1].
+
+```{r betals, warning = FALSE, message = FALSE, results = 'hide', fig.show = 'hide'}
+
+# Source `betals()` function
+source(file = "functions/betals.r")
+
+```
+
+```{r GLMM1, warning = FALSE, message = FALSE}
+
+# Factorize categorical variables
+results.df$site <- as.factor(results.df$site)
+results.df$cover_crop <- as.factor(results.df$cover_crop)
+
+# GLMM for species richness
+model <- gam(list(rich ~ cover_crop + s(site, bs = "re"),  # random effects for sites
+                  ~ cover_crop + s(site, bs = "re")),
+             data = results.df,
+             family = gammals())  # gamma location-scale distribution (0,inf)
+summary(model) # inspect model
+
+# GLMM for Shannon's H
+model2 <- gam(list(Shannon ~ cover_crop + s(site, bs = "re"), 
+                  ~ cover_crop + s(site, bs = "re")),
+             data = results.df,
+             family = gammals())
+summary(model2) # inspect model
+
+# GLMM for Simpson
+model3 <- gam(list(Simpson ~ cover_crop + s(site, bs = "re"),
+                  ~ cover_crop + s(site, bs = "re")),
+             data = results.df,
+             family = betals())  # beta location-scale distribution [0,1]
+summary(model3) # inspect model
+
+# GLMM for phylogenetic diversity
+model4 <- gam(list(PD ~ cover_crop + s(site, bs = "re"), 
+               ~ cover_crop + s(site, bs = "re")),
+              data = results.df,
+              family = gammals())
+summary(model4) # inspect model
+
+```
+
+## Comparison of Network Topology Measures
+
+We created box plots to assess differences in measures of co-occurrence network topology across cover crop species and sites. These measures included total count of vertices, total count of edges, network connectivity, and network connectance. Network connectivity represented the average number of edges per vertex. Network connectance represented the proportion of edges realized of all possible edges.
+
+```{r network_boxplots, warning = FALSE, message = FALSE, fig.width = 6.86, fig.height = 5.5, fig.cap = "Boxplots comparing measures of co-occurrence network topology: (A) total vertex count, (B) total edge count, (C) network connectivity, and (D) network connectance, between cover crop species and across sites."}
+
+# Boxplot for vertices
+plot5 <-
+  ggplot(data = results.df) +
+  geom_boxplot(aes(y = vertices, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  
+  labs(fill = NULL, y = "Vertices", tag = "A") +
+  scale_fill_manual(values = palette) +
+  scale_y_continuous(limits = c(0.4,700), expand = c(0,0)) +
+  facet_wrap(vars(site)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", 
+                                    face = "bold", vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        # axis.title.x = element_text(size = 10, family = "sans", face = "bold"),
+        legend.position = "none",
+        panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.5, fill = NA),
+        panel.spacing = unit(0.2, "lines"),
+        strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+# Boxplot for edges
+plot6 <-
+  ggplot(data = results.df) +
+  geom_boxplot(aes(y = edges, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  
+  labs(fill = NULL, y = "Edges", tag = "B") +
+  scale_fill_manual(values = palette) +
+  # scale_y_continuous(limits = c(0.4,3700), expand = c(0,0)) +
+  facet_wrap(vars(site)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", 
+                                    face = "bold", vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        legend.text = element_text(size = 4.2, family = "sans", face = "bold"),
+        legend.position = c(0.84, 0.83), # horizontal, vertical
+        legend.key.height = unit(0.17, "cm"),
+        legend.key.width = unit(0.15, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"),
+        panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.5, fill = NA),
+        panel.spacing = unit(0.2, "lines"),
+        strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+# Boxplot for connectivity
+plot7 <-
+  ggplot(data = results.df) +
+  geom_boxplot(aes(y = connectivity, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  
+  labs(fill = NULL, y = "Connectivity", tag = "C") +
+  scale_fill_manual(values = palette) +
+  # scale_y_continuous(limits = c(0.77,1.03), expand = c(0,0)) +
+  facet_wrap(vars(site)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", 
+                                    face = "bold", vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        # axis.title.x = element_text(size = 10, family = "sans", face = "bold"),
+        legend.position = "none",
+        panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.5, fill = NA),
+        panel.spacing = unit(0.2, "lines"),
+        strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+# Boxplot for connectance
+plot8 <-
+  ggplot(data = results.df) +
+  geom_boxplot(aes(y = connectance, fill = cover_crop), size = 0.2, outlier.size = 0.2) +  
+  labs(fill = NULL, y = "Connectance", tag = "D") +
+  scale_fill_manual(values = palette) +
+  # scale_y_continuous(limits = c(0.77,1.03), expand = c(0,0)) +
+  facet_wrap(vars(site)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", 
+                                    face = "bold", vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        # axis.title.x = element_text(size = 10, family = "sans", face = "bold"),
+        legend.position = "none",
+        panel.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.5, fill = NA),
+        panel.spacing = unit(0.2, "lines"),
+        strip.text.x = element_text(size = 8,family = "sans", face = "bold"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+# Combined boxplots
+CC_boxplots2 <- plot_grid(plot5, plot6, plot7, plot8, ncol = 2)
+CC_boxplots2
+
+```
+
+We also modeled the network topology measures as a function of cover crop species to determine the effect of cover crop identity on co-occurrence network structure of soil fungal communities. Gamma location-scale generalized linear mixed effects models with a random effect for site were used to model vertices, edges, and connectivity. A beta location-scale model was used for network connectance, as it is measured as a proportion.
+
+```{r GLMM2, warning = FALSE, message = FALSE}
+
+# GLMM for vertices
+model5 <- gam(list(vertices ~ cover_crop + s(site, bs = "re"),  
+                   ~ cover_crop + s(site, bs = "re")),
+              data = results.df,
+              family = gammals())  
+summary(model5) # inspect model
+
+# GLMM for edges
+model6 <- gam(list(edges ~ cover_crop + s(site, bs = "re"), 
+                   ~ cover_crop + s(site, bs = "re")),
+              data = results.df,
+              family = gammals()) 
+summary(model6) # inspect model
+
+# GLMM for connectivity
+model7 <- gam(list(connectivity ~ cover_crop + s(site, bs = "re"), 
+                   ~ cover_crop + s(site, bs = "re")),
+              data = results.df,
+              family = gammals())
+summary(model7) # inspect model
+
+# GLMM for connectance
+model8 <- gam(list(connectance ~ cover_crop + s(site, bs = "re"), 
+                   ~ cover_crop + s(site, bs = "re")),
+              data = results.df,
+              family = betals())
+summary(model8) # inspect model
+
+```
+
+## Relative Abundance of Fungal Classes
+
+To visualize the community composition, we constructed a relative abundance bar plot following the workflow by @Hui2021, agglomerating ASVs by fungal class and comparing samples by cover crop identity. To do so, we reorganized the our results into a data frame with ASV abundances transformed into relative abundances. Classes with less than 1% abundance were grouped together, to emphasize the classes with relative abundances greater than or equal to 1% of the total composition.
+
+```{r abundance_barplot1, message = FALSE, warning = FALSE}
+
+# Abundance plots were built following the workflow of Hui (2021):
+# https://www.yanh.org/2021/01/01/microbiome-r/#abundance-bar-plot
+ps.melt <- list()
+for (i in 1:length(ps.list)) {
+  # Calculate relative sample counts of taxa
+  ps.rel <- list()
+  ps.rel[[i]] <- transform_sample_counts(ps.list[[i]], function(x) x/sum(x)*100)
+  # Agglomerate samples by taxon of choice
+  agglomerated <- list()
+  agglomerated[[i]] <- tax_glom(ps.rel[[i]], taxrank = 'Class', NArm = FALSE)
+  # Melt into individual data frames
+  ps.melt[[i]] <- psmelt(agglomerated[[i]])
+}
+
+ps.melt2 <- do.call(rbind, ps.melt)
+
+# Organize the data for abundance plots
+ps.melt2 <- ps.melt2 %>%
+  group_by(Class) %>%
+  mutate(median = median(Abundance))
+rare <- unique(ps.melt2$Class[ps.melt2$median > 1])
+ps.melt2$Class[!(ps.melt2$Class %in% rare)] <- "< 1%"
+ps.sum2 <- ps.melt2 %>%
+  group_by(sample.ID, cover_crop, Class) %>%
+  summarise(Abundance = sum(Abundance))
+
+# How many fungal classes are <1%
+other <- ps.melt2$Class[!(ps.melt2$Class %in% rare)]
+length(other)
+
+```
+
+There were 4981 fungal classes that composed less than 1% of the community.
+
+```{r abundance_barplot2, warning = FALSE, message = FALSE, fig.width = 6.86, fig.height = 4.5, fig.cap = "Stacked bar plot describing the community composition in soil sampled from nine undervine cover crops. Relative abundances are grouped by cover crop species and coloured according to fungal class."}
+
+# Load icons for cover crops
+buckwheat <- get_phylopic("325ebaf5-9056-4f7c-9e31-5c9a9a82c755")
+buffalo <- get_phylopic("461f7280-3636-42c0-98fd-4fca668460c5")
+clover <- get_phylopic("4a86bfd2-2a14-4439-b70e-123a5b90f2ff")
+fieldpea <- get_phylopic("a3d3f760-d5c1-45a1-8e6e-5b4797700014")
+mustard <- get_phylopic("2b910601-b012-4c9e-896a-aea3ac04fab3")
+phacelia <- get_phylopic("29fa5168-0fcc-432f-a37b-fe18da8887f9")
+lentil <- get_phylopic("6295da8f-98b2-429a-8588-0e3e48012656")
+turnip <- get_phylopic("208cb01d-fe92-4432-b6a6-5fac87deb9bf")
+brassica <- get_phylopic("f20144d1-d243-4cca-aba2-24bce6c81d42")
+
+# Abundance bar plot
+FIG <-
+  ggplot(ps.sum2, aes(x = sample.ID, y = Abundance, fill = Class)) + 
+  geom_bar(stat = "identity", aes(fill = Class)) + 
+  labs(x = "", y= "Abundance (%)") +
+  facet_wrap(~cover_crop, scales = "free_x", nrow = 1,
+             labeller = labeller(cover_crop = label_wrap_gen(width = 10))) +
+  theme_classic() +
+  scale_fill_manual(values = palette2) + 
+  scale_y_continuous(limits = c(0,110), expand = c(0,0)) +
+  theme(# plot.tag = element_text(size = 14, family = "sans", face = "bold"),
+        # plot.tag.position = c(0.83, 0.85),
+        axis.title.y = element_text(size = 10, family = "sans", face = "bold"), # vjust = 2.5),
+        axis.text.y = element_text(size = 7, family = "sans"),
+        axis.text.x  = element_text(size = 2, angle = 45),
+        axis.line.y = element_line(linewidth = 0.2),
+        axis.line.x = element_line(linewidth = 0.2),
+        axis.ticks.x = element_line(linewidth = 0.2),
+        # legend.position = "none",
+        legend.text = element_text(size = 7, family = "sans", face = "bold"),
+        legend.title = element_text(size = 8, family = "sans", face = "bold"),
+        # legend.position = c(0.82, 0.86), #horizontal, vertical
+        legend.key.height = unit(0.32, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"),
+        panel.background = element_rect(fill = "transparent"),
+        # panel.border = element_rect(linewidth = 0.3, fill = NA),
+        strip.text.x = element_text(size = 6, family = "sans", face = "bold"),
+        strip.background = element_blank(),
+        panel.spacing = unit(0.15, "lines"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0.2,0.2), "cm")) #top, right, bottom, left
+
+# Blank figure with icons for overlay
+icons <-
+  ggplot() +
+  # geom_blank() +
+  scale_y_continuous(limits = c(0,100), expand = c(0,0)) +
+  scale_x_continuous(limits = c(0,100), expand = c(0,0)) +
+  add_phylopic(buckwheat, alpha = 1, x = 9.2, y = 88.5, ysize = 8, color = "#c44601") +
+  add_phylopic(buffalo, alpha = 1, x = 16.5, y = 88.5, ysize = 8, color = "#FCC9B5") +
+  add_phylopic(clover, alpha = 1, x = 25.5, y = 88, ysize = 7, color = "#E1B239") +
+  add_phylopic(fieldpea, alpha = 1, x = 33.6, y = 88.5, ysize = 8, color = "#FCF2C7") +
+  add_phylopic(mustard, alpha = 1, x = 42, y = 88.5, ysize = 7.8, color = "#A3D8C6") +
+  add_phylopic(phacelia, alpha = 1, x = 50.4, y = 88.5, ysize = 7.8, color = "#329973") +
+  add_phylopic(lentil, alpha = 1, x = 58, y = 88.5, ysize = 8, color = "#7D99E6") +
+  add_phylopic(turnip, alpha = 1, x = 65.9, y = 88.5, ysize = 8, color = "#E0D2EB") +
+  add_phylopic(brassica, alpha = 1, x = 74.3, y = 88.5, ysize = 6.5, color = "#98669F") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x  = element_blank(),
+        axis.line.y = element_blank(),
+        axis.line.x = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill = "transparent", color = NA))
+
+# Layer cover crop icons on top of abundance bar plot
+FIG3 <-
+  ggdraw(FIG) +
+  draw_plot(icons,
+            x = 0,
+            y = 0,
+            width = 1,
+            height = 1)
+FIG3
+
+```
+
+The turnip soil samples taken from the SuRDC site had weak or failed sequencing results. As such, these were removed from analyses and were, therefore, also excluded from the relative abundance bar plot.
+
+# Random Forest Models
+
+We used random forest modelling to categorize samples by cover crop identity and site to determine how distinct fungal communities of samples were based on sorting accuracy. As stochastic processes are involved in machine learning models, we saved our results from each model and imported these for subsequent analyses and data visualization. Random forest analysis was performed based on the workflow by @milazzotto2022mining.
+
+```{r randomforest1, message = FALSE, warning = FALSE}
+
+# Factorize site and cover crop variables
+sample_data(ps.species)$cover_crop <- as.factor(sample_data(ps.species)$cover_crop)
+sample_data(ps.species)$site <- as.factor(sample_data(ps.species)$site)
+
+# Build matrix of species abundances to feed into random forest model
+data <- as.data.frame(otu_table(ps.species))
+# Rename species as binomial
+colnames(data) <- as.character(paste(tax_table(ps.species)[, "Genus"], 
+                                     tax_table(ps.species)[, "Species"]))
+
+```
+
+## Categorizing by cover crop
+
+```{r randomforest2, eval = FALSE}
+
+# Random forest models were constructed and visualized following the workflow of 
+# Milazzotto et al. (2022):
+# https://doi.org/10.1016/j.isci.2022.103904
+
+# Random forest model classifying species by cover crop
+model.cc <- randomForest(y = sample_data(ps.species)$cover_crop,
+                          x = data,
+                          mtry = 5,
+                          ntree = 20000,
+                          importance = TRUE,
+                          proximity = TRUE,
+                          keep.forest = TRUE,
+                          replace = TRUE)
+
+```
+
+```{r rf_cc, message = FALSE, warnining = FALSE, fig.height = 6.86, fig.height = 5, fig.cap = "Variable importance plot for cover crop random forest classification."}
+
+# Import cover crop model results
+model.cc <- readRDS(file = "RDS/random_forest_final_CC.rds")
+model.cc # inspect the model
+
+# Variable importance plot
+varImpPlot(model.cc, type = 1, scale = FALSE, bg = "transparent", cex = 0.75)
+
+```
+
+The cover crop random forest classification had a high estimated error rate (97.56%), indicating that the model could not accurately sort samples by cover crop.
+
+## Categorizing by site
+
+```{r randomforest3, eval = FALSE}
+
+# Random forest model classifying species by site
+model.site <- randomForest(y = sample_data(ps.species)$site,
+                            x = data,
+                            mtry = 5,
+                            ntree = 20000,
+                            importance = TRUE,
+                            proximity = TRUE,
+                            keep.forest = TRUE,
+                            replace = TRUE)
+
+```
+
+```{r rf_site, warning = FALSE, message = FALSE, fig.height = 6.86, fig.height = 5, fig.cap = "Variable importance plot for site random forest classification."}
+
+# Import site-wide model results
+model.site <- readRDS(file = "RDS/random_forest__final_site.rds")
+model.site # inspect the model
+
+# Variable importance plot
+varImpPlot(model.site, type = 1, scale = FALSE, bg = "transparent", cex = 0.75)
+
+```
+
+The site random forest classification had a significantly lower estimated error rate (1.63%), indicating that the model was able to sort samples by site with a high degree of accuracy.
+
+## Principal component analysis
+
+We performed a principal component analysis (PCA) on the proximity matrix from each random forest model, using the top 20 most important fungal species identified by each random forest.
+
+```{r PCA_cc, message = FALSE, warning = FALSE}
+
+# Select top 20 species for cover crop PCA
+top_specs <- row.names(model.cc$importance)[order(
+  model.cc$importance[,"MeanDecreaseAccuracy"], decreasing = TRUE)][1:20]
+head(top_specs) # inspect top 6 species
+
+# Conduct a PCA on the proximity matrix from random forest
+pca.cc <- PCA(model.cc$proximity, graph = FALSE) 
+PC1.cc <- pca.cc$ind$coord[,1] # Store individual coordinates of PC1 as a vector
+PC2.cc <- pca.cc$ind$coord[,2] # Store individual coordinates of PC2 as a vector
+PCs.ID <- data.frame(cbind(PC1.cc, PC2.cc)) # Bind coords together as data frame
+PCs.ID$cover_crop <- sample_data(ps.species)$cover_crop # Add cover crops to data frame
+
+# Define axis labels based on % data explained across each dimension of PCA
+DIM_1.cc <- paste("Dim 1 (", round(pca.cc$eig[1,2], 1), "%)")
+DIM_2.cc <- paste("Dim 2 (", round(pca.cc$eig[2,2], 1), "%)")
+
+# PCA figure
+PCA_FIG.cc <- 
+  ggplot(data = PCs.ID, aes(x = PC1.cc, y = PC2.cc, 
+                             colour = cover_crop, fill = cover_crop)) +
+  geom_hline(aes(yintercept = 0), linetype = "dashed", lwd = 0.2, 
+             col = "grey60", alpha = 0.8) +
+  geom_vline(aes(xintercept = 0), linetype = "dashed", lwd = 0.2, 
+             col = "grey60", alpha = 0.8) +
+  stat_ellipse(geom = "polygon", alpha = 0.2, segments = 200, 
+               linewidth = 0.2, show.legend = FALSE) +
+  theme_bw() +
+  ylab(DIM_2.cc) +
+  xlab(DIM_1.cc) + 
+  geom_point(size = 0.2, aes(colour = cover_crop)) +
+  scale_color_manual(labels = c("Buckwheat", "Buffalo Grass", "Crescendo Ladino Clover", 
+                                "Field Pea", "Mustard White", "Phacelia",
+                                "Spring Lentil", "Turnip", "Winfred Brassica"),
+                     values = palette) +
+  scale_fill_manual(labels = c("Buckwheat", "Buffalo Grass", "Crescendo Ladino Clover", 
+                               "Field Pea", "Mustard White", "Phacelia",
+                               "Spring Lentil", "Turnip", "Winfred Brassica"),
+                    values = palette,
+                    guide = "none") +
+  ylab(DIM_2.cc) +
+  xlab(DIM_1.cc) + 
+  labs(tag = "A") +
+  guides(colour = guide_legend(nrow = 3, byrow = TRUE, 
+                               override.aes = list(size = 1.2))) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.025, 0.93), # horizontal, vertical
+        axis.title.x  = element_text(size = 8, family = "sans", face = "bold"),
+        axis.title.y  = element_text(size = 8, family = "sans", face = "bold"),
+        axis.text.y  = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(size = 6, family = "sans"),
+        legend.position = "top",  # horizontal, vertical
+        legend.direction = "horizontal",
+        legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 6, family = "sans", face = "bold"),
+        legend.key.size = unit(0.2, "cm"),
+        legend.key = element_blank(),
+        panel.border = element_rect(colour = "black", linewidth = 0.5, 
+                                    fill = "transparent"),
+        panel.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill = "transparent", colour = NA))
+
+```
+
+```{r PCA_site, message = FALSE, warning = FALSE}
+
+# Select top 20 species for site PCA
+top_specs2 <- row.names(model.site$importance)[order(
+  model.site$importance[,"MeanDecreaseAccuracy"], decreasing = TRUE)][1:20]
+head(top_specs2) # inspect top 6 species
+
+# Conduct a PCA on the proximity matrix from random forest
+pca.site <- PCA(model.site$proximity, graph = FALSE) 
+PC1.site <- pca.site$ind$coord[,1] # Store individual coordinates of PC1 as a vector
+PC2.site <- pca.site$ind$coord[,2] # Store individual coordinates of PC2 as a vector
+PCs.ID2 <- data.frame(cbind(PC1.site, PC2.site)) # Bind coords together as data frame
+PCs.ID2$site <- sample_data(ps.species)$site # Add in sites to the data frame
+
+# Define axis labels based on % data explained across each dimension of PCA
+DIM_1.site <- paste("Dim 1 (", round(pca.site$eig[1,2], 1), "%)")
+DIM_2.site <- paste("Dim 2 (", round(pca.site$eig[2,2], 1), "%)")
+
+# PCA figure
+PCA_FIG.site <- 
+  ggplot(data = PCs.ID2, aes(x = PC1.site, y = PC2.site, colour = site, fill = site)) +
+  geom_hline(aes(yintercept = 0), linetype = "dashed", lwd = 0.2, 
+             col = "grey60", alpha = 0.8) +
+  geom_vline(aes(xintercept = 0), linetype = "dashed", lwd = 0.2, 
+             col = "grey60", alpha = 0.8) +
+  stat_ellipse(geom = "polygon", alpha = 0.2, segments = 200, 
+               linewidth = 0.2, show.legend = FALSE) +
+  theme_bw() +
+  ylab(DIM_2.site) +
+  xlab(DIM_1.site) + 
+  geom_point(size = 0.2, aes(colour = site)) +
+  scale_color_manual(labels = c("Covert", "Kalala", "SuRDC"),
+                     values = c("red", "blue","gold")) +
+  scale_fill_manual(labels = c("Covert", "Kalala", "SuRDC"),
+                    values = c("red", "blue","gold"),
+                    guide = "none") +
+  ylab(DIM_2.site) +
+  xlab(DIM_1.site) + 
+  guides(colour = guide_legend(override.aes = list(size = 1.2))) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.025, 0.95), # horizontal, vertical
+        axis.title.x  = element_text(size = 8, family = "sans", face = "bold"),
+        axis.title.y  = element_text(size = 8, family = "sans", face = "bold"),
+        axis.text.y  = element_text(size = 6, family = "sans"),
+        axis.text.x  = element_text(size = 6, family = "sans"),
+        legend.position = "top",  # horizontal, vertical
+        legend.direction = "horizontal",
+        legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 6, family = "sans", face = "bold"),
+        legend.key.size = unit(0.2, "cm"),
+        legend.key = element_blank(),
+        panel.border = element_rect(colour = "black", linewidth = 0.5, 
+                                    fill = "transparent"),
+        panel.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill = "transparent", colour = NA))
+
+# Add tag to site PCA plot
+PCA_FIG.site2 <- PCA_FIG.site + labs(tag = "D")
+
+# Combine plots
+PCA_species <- plot_grid(PCA_FIG.cc, PCA_FIG.site2, nrow = 2, rel_heights = c(1,0.9))
+
+```
+
+We constructed density plots to further investigate the top two fungal species from each PCA plot.
+
+```{r densityplots, warning = FALSE, message = FALSE, fig.width = 6.86, fig.height = 5, fig.cap = "(A) PCA on the proximity matrix of the cover crop-classification random forest with ellipses denoting the clustering patterns of each cover crop. Density plots for the abundance of the top two species (B) and (C), respectively, identified by importance to the cover crop-classification random forest. (D) PCA on the proximity matrix of the site-classification random forest with ellipses denoting the clustering patterns of each site. Density plots for the abundance of the top two species (E) and (F), respectively, identified by importance to the site-classification random forest."}
+
+# Density plots take a closer look at the top 2 species for cover crop PCA
+spec_FIG1a <- 
+  ggplot(data, aes(x = data[,top_specs[1]], y = sample_data(ps.species)$cover_crop, 
+                    fill = sample_data(ps.species)$cover_crop)) +
+  geom_density_ridges(scale = 5, alpha = 0.6, size = 0.2) +
+  theme_ridges() +
+  scale_fill_manual(labels = c("Buckwheat", "Buffalo Grass", "Crescendo Ladino Clover", 
+                               "Field Pea", "Mustard White", "Phacelia",
+                               "Spring Lentil", "Turnip", "Winfred Brassica"),
+                    values = palette,
+                    guide = "none") +
+  scale_y_discrete(expand = c(0.1, 0), 
+                   labels = c("Buckwheat", "Buffalo Grass", "Crescendo Ladino Clover", 
+                              "Field Pea", "Mustard White", "Phacelia",
+                              "Spring Lentil", "Turnip", "Winfred Brassica")) +
+  labs(x = paste(top_specs[1], "Abundance"), y = "Cover crop", tag = "B") +
+  theme(plot.tag = element_text(size = 8, family = "sans", face = "bold"),
+        plot.tag.position = c(0.09, 0.93), # horizontal, vertical
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title.x  = element_text(hjust = 0.5, size = 6, family = "sans", 
+                                     face = "bold"),
+        axis.title.y  = element_text(hjust = 0.5, size = 6, family = "sans", 
+                                     face = "bold"),
+        axis.text.y  = element_text(size = 4, family = "sans"),
+        axis.text.x  = element_text(size = 4, family = "sans"),
+        panel.border = element_rect(colour = "black", linewidth = 1, 
+                                    fill = "transparent"),
+        legend.position = "none")
+
+spec_FIG1b <- 
+  ggplot(data, aes(x = data[,top_specs[2]], y = sample_data(ps.species)$cover_crop, 
+                    fill = sample_data(ps.species)$cover_crop)) +
+  geom_density_ridges(scale = 5, alpha = 0.6, size = 0.2) +
+  theme_ridges() +
+  scale_fill_manual(labels = c("Buckwheat", "Buffalo Grass", "Crescendo Ladino Clover", 
+                               "Field Pea", "Mustard White", "Phacelia",
+                               "Spring Lentil", "Turnip", "Winfred Brassica"),
+                    values = palette,
+                    guide = "none") +
+  scale_y_discrete(expand = c(0.1, 0), 
+                   labels = c("Buckwheat", "Buffalo Grass", "Crescendo Ladino Clover", 
+                              "Field Pea", "Mustard White", "Phacelia",
+                              "Spring Lentil", "Turnip", "Winfred Brassica")) +
+  labs(x = paste("Unclassified_Fungi_gen_Incertae_sedis", "Abundance"),  
+       y = "Cover crop", tag = "C") +
+  theme(plot.tag = element_text(size = 8, family = "sans", face = "bold"),
+        plot.tag.position = c(0.09, 0.93), # horizontal, vertical
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title.x  = element_text(hjust = 0.5, size = 6, family = "sans", 
+                                     face = "bold"),
+        axis.title.y  = element_text(hjust = 0.5, size = 6, family = "sans", 
+                                     face = "bold"),
+        axis.text.y  = element_text(size = 4, family = "sans"),
+        axis.text.x  = element_text(size = 4, family = "sans"),
+        panel.border = element_rect(colour = "black", linewidth = 1, 
+                                    fill = "transparent"),
+        legend.position = "none")
+
+# Density plots take a closer look at the top 2 species for site PCA
+spec_FIG2a <- 
+  ggplot(data, aes(x = data[,top_specs2[1]], y = sample_data(ps.species)$site, 
+                    fill = sample_data(ps.species)$site)) +
+  geom_density_ridges(scale = 5, alpha = 0.6, size = 0.2) +
+  theme_ridges() +
+  scale_fill_manual(labels = c("Covert", "Kalala", "SuRDC"),
+                    values = c("red", "blue","gold"),
+                    guide = "none") +
+  scale_y_discrete(expand = c(0.1, 0), labels = c("Covert", "Kalala", "SuRDC")) +
+  labs(x = paste(top_specs2[1], "Abundance"), y = "Site", tag = "E") +
+  theme(plot.tag = element_text(size = 8, family = "sans", face = "bold"),
+        plot.tag.position = c(0.09, 0.93), # horizontal, vertical
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title.x  = element_text(hjust = 0.5, size = 6, family = "sans", 
+                                     face = "bold"),
+        axis.title.y  = element_text(hjust = 0.5, size = 6, family = "sans", 
+                                     face = "bold"),
+        axis.text.y  = element_text(size = 5, family = "sans", face = "bold"),
+        axis.text.x  = element_text(size = 5, family = "sans"),
+        panel.border = element_rect(colour = "black", linewidth = 1, 
+                                    fill = "transparent"),
+        legend.position = "none")
+
+spec_FIG2b <- 
+  ggplot(data, aes(x = data[,top_specs2[2]], y = sample_data(ps.species)$site, 
+                    fill = sample_data(ps.species)$site)) +
+  geom_density_ridges(scale = 5, alpha = 0.6, size = 0.2) +
+  theme_ridges() +
+  scale_fill_manual(labels = c("Covert", "Kalala", "SuRDC"),
+                    values = c("red", "blue","gold"),
+                    guide = "none") +
+  scale_y_discrete(expand = c(0.1, 0), labels = c("Covert", "Kalala", "SuRDC")) +
+  labs(x = paste(top_specs2[2], "Abundance"), y = "Site", tag = "F") +
+  theme(plot.tag = element_text(size = 8, family = "sans", face = "bold"),
+        plot.tag.position = c(0.09, 0.93), # horizontal, vertical
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title.x  = element_text(hjust = 0.5, size = 6, family = "sans", 
+                                     face = "bold"),
+        axis.title.y  = element_text(hjust = 0.5, size = 6, family = "sans", 
+                                     face = "bold"),
+        axis.text.y  = element_text(size = 5, family = "sans", face = "bold"),
+        axis.text.x  = element_text(size = 5, family = "sans"),
+        panel.border = element_rect(colour = "black", linewidth = 1, 
+                                    fill = "transparent"),
+        legend.position = "none")
+
+# Combined density plots
+spec_FIG <- plot_grid(spec_FIG1a, spec_FIG1b, spec_FIG2a, spec_FIG2b, 
+                      nrow = 4, rel_heights = c(1,1,0.9,0.9))
+
+# PCA and density plots together
+combined_specs <- plot_grid(PCA_species, spec_FIG, nrow = 1)
+combined_specs
+
+```
+
+## Heat maps
+
+From the results of the random forest model classifying by cover crop species, we constructed a heatmap to visualize the abundances of the top 50 fungal species across samples. We annotated the heatmap by cover crop identity and site. Row and column dendrograms were added to elucidate the relatedness and similarities between species and samples included in the heat map. To avoid identical species and genus names for binomials of unclassified species, only the species identifier of the binomial was used for duplicates.
+
+```{r heatmap_rf, message = FALSE, warning = FALSE}
+
+# Select top 50 species
+TOP50_specs <- row.names(model.cc$importance)[order(
+  model.cc$importance[,"MeanDecreaseAccuracy"], decreasing = TRUE)][1:50]
+t50_specs <- t(data[,TOP50_specs])
+
+# Fix duplicate words in row names
+rows_spec <- as.data.frame(rownames(t50_specs))
+# Separate genus and species
+rows_spec$Genus <- sapply(strsplit(rows_spec$`rownames(t50_specs)`, " "), `[`, 1)
+rows_spec$Species <- sapply(strsplit(rows_spec$`rownames(t50_specs)`, " "), `[`, 2)
+
+# Only use species names if genus and species names contain duplicate words
+for (i in 1:nrow(rows_spec)) {
+  if (rows_spec$Genus[i] == rows_spec$Species[i]) {
+    rows_spec$fixed[i] <- rows_spec$Species[i]
+  } else if ("Fungi_gen_Incertae_sedis" %in% rows_spec$Genus[i]) {
+    rows_spec$fixed[i] <- rows_spec$Species[i]
+  } else if ("Chaetothyriales_gen_Incertae_sedis" %in% rows_spec$Genus[i]) {
+    rows_spec$fixed[i] <- rows_spec$Species[i]
+  } else if (rows_spec$Species[i] == paste("Unclassified_",
+                                           rows_spec$Genus[i], sep = "")) {
+    rows_spec$fixed[i] <- rows_spec$Species[i]
+  } else if (rows_spec$Species[i] == paste("Unclassified_", rows_spec$Genus[i],
+                                           ".1", sep = "")) {
+    rows_spec$fixed[i] <- rows_spec$Species[i]
+  } else if (rows_spec$Species[i] == paste("Unclassified_", rows_spec$Genus[i],
+                                           ".2", sep = "")) {
+    rows_spec$fixed[i] <- rows_spec$Species[i]
+  } else {rows_spec$fixed[i] <- rows_spec$`rownames(t50_specs)`[i]
+  }
+}
+
+# Reassign row names for top 50 species
+rownames(t50_specs) <- rows_spec$fixed
+
+# Define column annotations 
+hmap_col <- data.frame(`Cover crop` = as.factor(sample_data(ps.species)$cover_crop), 
+                       check.names = FALSE)
+hmap_col2 <- data.frame(Site = as.factor(sample_data(ps.species)$site), 
+                        check.names = FALSE)
+
+# Define colours for column annotations
+hcol_fill = list(`Cover crop` = c(`Buckwheat` = "#c44601", `Buffalo Grass` = "#FCC9B5", 
+                                  `Crescendo Ladino Clover` = "#E1B239", 
+                                 `Field Pea` = "#FCF2C7", `Mustard White` = "#A3D8C6", 
+                                 `Phacelia` = "#329973", `Spring Lentil` = "#7D99E6", 
+                                 `Turnip` = "#E0D2EB", `Winfred Brassica` =  "#98669F"))
+hcol_fill2 <- list(Site = c(`Covert` = "red", `Kalala` = "blue", `SuRDC` = "gold"))
+
+# Heatmap annotations
+hannot_col <- HeatmapAnnotation(df = hmap_col, name = "Cover crop", 
+                                col = hcol_fill, which = "column",
+                                annotation_name_gp = grid::gpar(fontsize = 5), 
+                                simple_anno_size = unit(2, "mm"), 
+                                show_legend = FALSE)
+hannot_col2 <- HeatmapAnnotation(df = hmap_col2, name = "Site", 
+                                 col = hcol_fill2, which = "column",
+                                 annotation_name_gp = grid::gpar(fontsize = 5), 
+                                 simple_anno_size = unit(2, "mm"), 
+                                 show_legend = FALSE)
+
+# Extract heatmap grob
+hm_50specs <- grid.grabExpr(ComplexHeatmap::draw(
+  # Construct heatmap
+  ComplexHeatmap::Heatmap(t50_specs, name = "Abundance", 
+                          col = circlize::colorRamp2(c(0, 150, 300), 
+                                                     c("#190087", "#E72476", "#FAEC50")),
+                        show_row_names = TRUE,
+                        row_names_gp = grid::gpar(fontsize = 4),
+                        show_row_dend = TRUE,
+                        row_dend_side = "left",
+                        row_dend_width = unit(0.75, "cm"),
+                        show_column_names = TRUE,
+                        column_names_gp = grid::gpar(fontsize = 3),
+                        show_column_dend = TRUE,
+                        column_dend_side = "top",
+                        column_dend_height = unit(0.75, "cm"),
+                        top_annotation = c(hannot_col, hannot_col2),
+                        show_heatmap_legend = FALSE,),
+                        background = "transparent"))
+                        # heatmap_legend_param = list(labels_gp = grid::gpar(fontsize = 5)))
+
+```
+
+```{r heatmap_legends, message = FALSE, warning = FALSE}
+
+# Approximate the range needed for the gradient scale
+a.scale <- data.frame("fill" = t50_specs[,"S38"], "species" = row.names(t50_specs))
+
+# Tile plot to build legend for abundance scale
+hm.legend1 <-
+  ggplot(data = a.scale) +
+  theme_bw() +
+  geom_tile(aes(x = a.scale$species, y = a.scale$fill, fill = a.scale$fill)) +
+  labs(fill = "Abundance") +
+  scale_fill_gradient2(low = "#190087", mid = "#E72476", high = "#FAEC50", 
+                       midpoint = 150, space = "Lab") +
+  theme(legend.title = element_text(size = 4, family = "sans", face = "bold",
+                                    margin = ggplot2::margin(b = 2)),
+        legend.text = element_text(size = 3.5, family = "sans", face = "bold"),
+        legend.position = c(0.9025,0.822), # horizontal, vertical
+        legend.direction = "vertical",
+        legend.margin = ggplot2::margin(t = 0, r = 0, b = 0, l = 1, unit = "pt"),
+        legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        legend.key.height = unit(0.12, "cm"),
+        legend.key.width = unit(0.18, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"))
+
+lgd1 <- ggpubr::get_legend(hm.legend1) # extract legend from plot
+
+# Tile plot to build legend for cover crop annotation
+hm.legend2 <-
+  ggplot(data = results.df) +
+  geom_tile(aes(x = sample.ID, y = cover_crop, fill = cover_crop)) +
+  scale_fill_manual(values = palette) +
+  theme(legend.title = element_blank(),
+        legend.text = element_text(size = 3.5, family = "sans", face = "bold"),
+        legend.position = c(0.936,0.71), # horizontal, vertical
+        legend.direction = "vertical",
+        legend.margin = ggplot2::margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"),
+        legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        legend.key.height = unit(0.12, "cm"),
+        legend.key.width = unit(0.18, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"))
+
+lgd2 <- ggpubr::get_legend(hm.legend2) # extract legend from plot
+
+# Tile plot to build legend for site annotation
+hm.legend3 <-
+  ggplot(data = results.df) +
+  geom_tile(aes(x = sample.ID, y = site, fill = site)) +
+  scale_fill_manual(values = c("red", "blue", "gold")) +
+  labs(fill = "Site") +
+  theme(legend.title = element_text(size = 4, family = "sans", face = "bold",
+                                    margin = ggplot2::margin(b = 3)),
+        legend.text = element_text(size = 3.5, family = "sans", face = "bold"),
+        legend.position = c(0.96,0.83), # horizontal, vertical
+        legend.direction = "vertical",
+        legend.margin = ggplot2::margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"),
+        legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        legend.key.height = unit(0.12, "cm"),
+        legend.key.width = unit(0.18, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"))
+
+lgd3 <- ggpubr::get_legend(hm.legend3) # extract legend from plot
+
+# Combine individual legends
+LGDS1 <-
+  ggdraw(lgd1) +
+  draw_plot(lgd2,
+            x = 0,
+            y = 0,
+            width = 1,
+            height = 1) +
+  draw_plot(lgd3,
+            x = 0,
+            y = 0,
+            width = 1,
+            height = 1)
+
+# Inset legends into heatmap
+hm_rf <-
+  ggdraw(LGDS1) +
+  draw_plot(hm_50specs,
+            x = 0,
+            y = 0,
+            width = 0.94,
+            height = 1) +
+  draw_label("D", x = 0.025, y = 0.94,
+             fontfamily = "sans",
+             fontface = "bold",
+             size = 12)
+
+```
+
+```{r rf_final, message = FALSE, warning = FALSE, fig.width = 6.86, fig.height = 7, fig.cap = "(A) PCA showing the clustering results from a random forest analysis of samples for each cover crop, with density plots (B) and (C) visualizing the abundance of the top two fungal species ranked by importance in the random forest classification. (D) Heat map of the abundances of the top 50 fungal species ranked by importance in the random forest analysis of cover crop classification, annotated by site and cover crop. "}
+
+# Combine density plots with PCA
+Fig4_BC <- plot_grid(spec_FIG1a, spec_FIG1b, ncol = 1)
+Fig4_ABC <- plot_grid(PCA_FIG.cc, Fig4_BC, ncol = 2)
+
+# Final random forest analysis figure
+Fig4 <- plot_grid(Fig4_ABC, hm_rf, nrow = 2, rel_heights = c(2,3))
+Fig4
+
+```
+
+```{r figure2, message = FALSE, warning = FALSE, fig.width = 6.86, fig.height = 4.7, fig.cap = "(A) Venn diagram counting the unique fungal species found in soil samples from each site, as well as species shared across sites. (B) Boxplots grouped by site, showing the relationship between mycorrhizal communities for each cover crop species and species richness. All turnip (light purple) samples from SuRDC were excluded due to weak sequencing results. (C) PCA on the proximity matrix of the site-classification random forest model showing clusters formed from sorting results."}
+
+# Add tag to site PCA figure
+PCA_FIG.site3 <- PCA_FIG.site + labs(tag = "C")
+
+# Group boxplot and PCA plot
+Fig2_BC <- plot_grid(plot2, PCA_FIG.site3, ncol = 1)
+
+# Add Venn diagram to boxplot and PCA
+Fig2 <- plot_grid(venn, Fig2_BC, ncol = 2)
+Fig2
+
+```
+
+# Co-Occurrence Affinity
+
+As an alternative to measures of beta diversity, we calculated the co-occurrence affinity between soil fungal communities of different cover crop species. This measure represented the similarity between communities of pairs of cover crop species based on co-occurrence from presence-absence data. We used the `CooccurrenceAffinity` package [v1.0, @mainali2022better] to calculate co-occurrence affinity as the $\alpha$ index.
+
+```{r cooccurrence_affinity, message = FALSE, warning = FALSE}
+
+# Alpha index was calculated using `CooccurrenceAffinity` (Mainali et al., 2022):
+# https://doi.org/10.1126/sciadv.abj9204
+
+# Merge samples by cover crop
+CCgroup <- merge_samples(otu_table(ps.species), 
+                         group = sample_data(ps.species)$cover_crop, fun = sum)
+CCgroup <- t(as.data.frame(otu_table(CCgroup)))
+
+# Replace sequences in row names with species names
+taxaps <- as.data.frame(tax_table(ps.species))
+rownames(CCgroup) <- taxaps$Species
+
+# Prepare an occurrence matrix based on the OTU table
+occur.CC <- CooccurrenceAffinity::dataprep(data = CCgroup, row.or.col = "col", 
+                                           datatype = "abundance", threshold = 1, 
+                                           class0.rule = "less")
+
+# Calculate co-occurrence affinity between sites
+affinity.CC <- affinity(occur.CC, row.or.col = "col", 
+                        squarematrix = c("alpha_mle", "jaccard"))
+
+```
+
+We modeled the alpha index as a function of the total fungal species count for each pair of cover crops. As there is only one $\alpha$ index measure calculated per cover crop pair (A with B), we added the duplicate values, such that the reverse pairings (B with A) were also included and each cover crop would be represented. We fit three models to investigate the relationship between $\alpha$ and the summed fungal species count, from simplest to most complex: a generalized least squares linear model, a linear mixed effects model with random intercepts for cover crop species, and a linear mixed effects model with random slopes and intercepts for cover crop species. 
+
+```{r alpha_model, message = FALSE, warning = FALSE}
+
+# Add duplicates back into the resulting data frame
+DATA.fix <- affinity.CC$all
+# Switch the entities and their counts accordingly
+DATA.fix <- relocate(DATA.fix, "entity_2", .before = "entity_1")
+DATA.fix <- relocate(DATA.fix, "entity_2_count_mB", .before = "entity_1_count_mA")
+colnames(DATA.fix)[1] = "entity_1"
+colnames(DATA.fix)[2] = "entity_2"
+colnames(DATA.fix)[3] = "entity_1_count_mA"
+colnames(DATA.fix)[4] = "entity_2_count_mB"
+
+# Remove periods added to cover crop names
+DATA.fix$entity_1 <- gsub(".", " ", DATA.fix$entity_1, fixed = TRUE)
+DATA.fix$entity_2 <- gsub(".", " ", DATA.fix$entity_2, fixed = TRUE)
+affinity.CC$all$entity_1 <- gsub(".", " ", affinity.CC$all$entity_1, fixed = TRUE)
+affinity.CC$all$entity_2 <- gsub(".", " ", affinity.CC$all$entity_2, fixed = TRUE)
+
+
+# Combine the data frames
+DATA <- rbind(affinity.CC$all, DATA.fix)
+
+# Define model variables
+SUMCOUNT <- DATA$entity_1_count_mA + DATA$entity_2_count_mB  # fungal species count
+ALPHA <- DATA$alpha_mle  # alpha index
+CC <- DATA$entity_1  # cover crop identity
+
+# Linear models for alpha
+fit <- nlme::gls(ALPHA ~ SUMCOUNT, method = "ML", data = as.data.frame(DATA))
+fit_random <- nlme::lme(ALPHA ~ SUMCOUNT, random = ~ 1|CC, data = as.data.frame(DATA))
+fit_random2 <- nlme::lme(ALPHA ~ SUMCOUNT, random = ~ SUMCOUNT|CC, 
+                         data = as.data.frame(DATA))
+
+# AIC-based model selection
+AIC(fit); AIC(fit_random); AIC(fit_random2)
+
+# Inspect best model identified by AIC
+summary(fit)
+
+```
+
+We used AIC-based model selection to evaluate relative model performance and found that the best fit of the three models was the simplest model, which did not include the random effect of cover crop. To visualize the co-occurrence affinity of cover crop soil communities, we plotted $\alpha$ against the summed fungal species count for cover crop pairs and constructed a triangular heat map of $\alpha$ values. A generalized linear regression model with a Gamma distribution and log-link was used to show the relationship between $\alpha$ and fungal species count for each cover crop in a pair. 
+
+```{r alpha_model2, message = FALSE, warning = FALSE, fig.width = 6.86, fig.height = 4, fig.cap = "(A) Generalized linear regression model with a Gamma distribution & log-link showing alpha of fungi between cover crop species pairs. The overall trend for alpha across all cover crop pairs is indicated by the solid black line. (B) Corresponding heat map of the alpha values for each pair of cover crop species in a matrix."}
+
+# Visualize alpha by cover crop and overall trend
+F3 <-
+  ggplot(data = DATA, aes(x = SUMCOUNT, y = ALPHA)) +
+  geom_point(aes(fill = CC), size = 1.5, shape = 21, stroke = 0.2) +
+  geom_smooth(aes(col = CC), method = "glm", 
+              method.args = list(family = Gamma()), se = F, linewidth = 1) +
+  geom_smooth(aes(col = "All"), method = "glm", 
+              method.args = list(family = Gamma()), se = F, linewidth = 1.5, 
+              colour = "black") +
+  labs(x = "Species Count per Cover Crop Pair", 
+       y = "Co-Occurence Affinity (\u03b1)", tag = "A") +
+  # scale_x_continuous(limits = c(1750,2130), expand = c(0,0)) +
+  scale_x_continuous(limits = c(1850,2250), expand = c(0,0)) +
+  scale_y_continuous(limits = c(1.78,2.55), expand = c(0,0)) +
+  # scale_y_continuous(limits = c(1.73,2.45), expand = c(0,0)) +
+  scale_fill_manual(values = palette) +
+  scale_colour_manual(values = palette) +
+  guides(fill = guide_legend(nrow = 3, byrow = TRUE)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.05, 0.95), # horizontal, vertical
+        axis.title.y = element_text(size = 8, family = "sans", face = "bold", 
+                                    vjust = 1.5),
+        axis.text.y = element_text(size = 6, family = "sans"),
+        axis.text.x = element_text(size = 6, family = "sans"),
+        axis.ticks.y = element_line(linewidth = 0.2),
+        axis.ticks.x = element_line(linewidth = 0.2),
+        axis.title.x = element_text(size = 8, family = "sans", face = "bold"),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 5, family = "sans", face = "bold"),
+        legend.position = "top", # horizontal, vertical
+        legend.direction = "horizontal",
+        legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        legend.key.height = unit(0.02, "cm"),
+        legend.key.width = unit(0.02, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"),
+        panel.border = element_rect(linewidth = 0.2, fill = "transparent"),
+        panel.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.2,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+# Triangle heat map to visualize alpha among pairs
+F4 <-
+  ggplot(data = affinity.CC$all, aes(x = entity_2, y = entity_1)) +
+  theme_bw() +
+  geom_tile(aes(fill = alpha_mle), colour = "gray60") +
+  labs(fill = "\u03b1", tag = "B") +
+  scale_x_discrete(limits = rev, 
+                   labels = function(x) stringr::str_wrap(x, width = 10)) +
+  scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 10)) +
+  scale_fill_gradient2(low = "#190087", mid = "#E72476", high = "#FAEC50", 
+                       midpoint = 2.1, space = "Lab") +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.tag = element_text(size = 12, family = "sans", face = "bold"),
+        plot.tag.position = c(0.03, 0.98), # horizontal, vertical
+        axis.title.y = element_blank(),
+        axis.title.x = element_blank(), #element_text(size = 4, family = "sans", face = "bold"),
+        axis.text.y = element_text(size = 5, family = "sans", face = "bold", 
+                                   angle = 40, colour = "black"),
+        axis.text.x = element_text(size = 5, family = "sans", face = "bold", 
+                                   angle = 40, colour = "black", vjust = 0.85),
+        axis.ticks.y = element_line(colour = "transparent"),
+        axis.ticks.x = element_line(colour = "transparent"),
+        legend.title = element_text(size = 7, family = "sans", face = "bold"),
+        legend.text = element_text(size = 5, family = "sans", face = "bold"),
+        legend.position = c(0.6,0.93),#c(1, 0.45), # horizontal, vertical
+        legend.direction = "horizontal",
+        # legend.margin = margin(t = 0, r = 0, b = 0, l =0, unit = "pt"),
+        # legend.box.spacing = unit(c(0,0,0,0), "cm"),
+        legend.key.height = unit(0.3, "cm"),
+        legend.key.width = unit(0.34, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"),
+        panel.border = element_blank(),
+        panel.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = unit(c(0.6,0.1,0,0.2), "cm")) # top, right, bottom, left
+
+# Combine scatterplot and heat map
+FIG5 <- plot_grid(F3, F4, ncol = 2, rel_widths = c(4.2,5))
+FIG5
+
+```
+
+# Pathogen Analysis
+
+We used the `filter_mga()` function from the `mga` package to identify putative vine pathogens in our soil samples. We searched at the family, genus, and species levels for taxa described as vine pathogens in literature [@bekris2021grapevine, @travadon2022fungal, @urbez2014grapevine]. As we were primarily interested in potential pathogens found in the samples for this analysis, we opted only to keep selected taxa.
+
+```{r pathogens, warning = FALSE, message = FALSE}
+
+# Import table of pathogenic taxa
+pathogens <- read.csv("data/Plant_Pathogens.csv")
+
+# Tabulate pathogens to filter for
+knitr::kable(pathogens, caption = "Pathogenic taxa to filter for in the each 
+             `mga-class` object produced.")
+
+# Empty list to store filtered objects
+RESULTS_path <- list()
+
+# Filter for pathogens in each `mga` object
+for (i in 1:length(RESULTS)) {
+  RESULTS_path[[i]] <- mga::filter_mga(RESULTS[[i]], taxa = pathogens,
+                                       drop = FALSE, # only keep selected taxa
+                                       group.taxa = NULL) 
+}
+
+```
+
+The updated metrics of community structure and `phyloseq` objects from each filtered `mga` object were subsequently extracted and merged for an overview of all samples.
+
+```{r pathogens_merge, warning = FALSE, message = FALSE}
+
+# Extract filtered sample results from the list
+RES2 <- list()
+for (i in 1:length(RESULTS_path)){
+
+  RES2[[i]] <- RESULTS_path[[i]]$results.samples
+}
+
+# Build combined data frame of metrics
+results.df2 <- do.call(rbind, RES2)
+
+
+## Restructuring data for easier subsequent handling
+
+# Extract all phyloseq objects from `RESULTS_path` into a list
+ps.list2 <- list()
+for (i in 1:length(RESULTS_path)) {
+  ps.list2[[i]] <- RESULTS_path[[i]]$ps  ## REPLACE WITH PS.TAXA AFTER RERUN ##
+}
+
+# Merge phyloseq OTU tables to return single combined OTU table
+ps_C1 <- ps.list2[[1]]
+# Merging other OTU tables requires a base to add onto
+merge.otu2 <- merge_phyloseq(otu_table(ps_C1)) 
+
+for (i in 1:length(ps.list2)) {
+  # Extract each phyloseq object from the list
+  ps_otu <- ps.list2[[i]]
+  merge.otu2 <- merge_phyloseq(otu_table(ps_otu), merge.otu2)
+}
+
+# Merge taxonomy 
+merge.tax2 <- merge_phyloseq(tax_table(ps_C1))
+
+for (i in 1:length(ps.list2)) {
+  # Extract each phyloseq object from the list
+  ps_otu <- ps.list2[[i]]
+  merge.tax2 <- merge_phyloseq(tax_table(ps_otu), merge.tax2)
+}
+
+# Needed to create the phyloseq-class object
+rownames(results.df2) <- results.df2$sample.ID  
+
+# Create a new phyloseq-class object with all combined elements
+# `merge_phyloseq()` does not work if phylogenetic trees have different numbers of tips
+pathogen.ps <- phyloseq(otu_table(merge.otu2),
+                     tax_table(merge.tax2),
+                     sample_data(results.df2))
+
+```
+
+## Relative Abundance of Putative Pathogens
+
+The relative abundances of all pathogenic taxa were calculated and plotted in a stacked bar plot to compare the relative abundance and occurrence of putative vine pathogens across samples and cover crop species.
+
+```{r path_abundance, warning = FALSE, message = FALSE}
+
+# Calculate relative abundance
+pathogen.rel <- transform_sample_counts(pathogen.ps, function(x) x/sum(x)*100)
+pathogen.melt <- psmelt(pathogen.rel)
+
+# Organize the data for abundance plots
+pathogen.melt1 <- pathogen.melt %>%
+  group_by(sample.ID, cover_crop, keep_taxon) %>%
+  summarise(Abundance = sum(Abundance))  # sum abundances
+
+# Relative abundance bar plot
+Fig6_A <-
+  ggplot(pathogen.melt1, aes(x = sample.ID, y = Abundance, fill = keep_taxon)) + 
+  geom_bar(stat = "identity", aes(fill = keep_taxon)) + 
+  labs(x = "", y= "Abundance (%)", fill = "Taxon", tag = "A") +
+  facet_wrap(~cover_crop, scales = "free_x", nrow = 1,
+             labeller = labeller(cover_crop = label_wrap_gen(width = 10))) +
+  theme_classic() +
+  scale_fill_manual(values = palette3) + 
+  scale_y_continuous(limits = c(0,110), expand = c(0,0)) +
+  theme(plot.tag = element_text(size = 14, family = "sans", face = "bold"),
+       plot.tag.position = c(0.02, 0.95),
+       axis.title = element_text(size = 10, family = "sans", face = "bold"),
+       axis.text.y = element_text(size = 7, family = "sans"),
+       axis.text.x  = element_text(size = 2, angle = 45, vjust = 0.5),
+       axis.line.y = element_line(linewidth = 0.2),
+       axis.line.x = element_line(linewidth = 0.2),
+       axis.ticks.x = element_line(linewidth = 0.2),
+       legend.text = element_text(size = 7, family = "sans", face = "bold"),
+        legend.title = element_text(size = 8, family = "sans", face = "bold"),
+       legend.key.height = unit(0.32, "cm"),
+       legend.key = element_blank(),
+       legend.background = element_rect(fill = "transparent"),
+       panel.background = element_rect(fill = "transparent"),
+       strip.text.x = element_text(size = 6, family = "sans", face = "bold"),
+       strip.background = element_blank(),
+       strip.placement = "outside",
+       panel.spacing = unit(0.15, "lines"),
+       plot.background = element_rect(fill = "transparent", color = NA),
+       plot.margin = unit(c(0,0.1,0,0.2), "cm")) #top, right, bottom, left
+
+# Layer cover crop icons on top of abundance bar plot
+FIG6A <-
+  cowplot::ggdraw(Fig6_A) +
+  cowplot::draw_plot(icons,
+            x = 0,
+            y = 0,
+            width = 0.99,
+            height = 1)
+
+```
+
+To compare the proportion of pathogenic to non-pathogenic species in each sample, the taxonomy table of the unfiltered `mga` object was used to distinguish between pathogenic and non-pathogenic taxa based on the pathogens identified.
+
+```{r path_abundance3, warning = FALSE, message = FALSE}
+
+# Transform sample counts to relative abundances
+pathogen.rel2 <- transform_sample_counts(ps.species, function(x) x/sum(x)*100)
+
+# Extract taxonomy tables
+tax <- as.data.frame(tax_table(pathogen.ps))
+tax2 <- as.data.frame(tax_table(pathogen.rel2))
+
+# Rename species column to include the full binomial for both taxonomy tables
+tax$Species <- paste(tax$Genus, tax$Species, sep = " ")
+tax2$Species <- paste(tax2$Genus, tax2$Species, sep = " ")
+
+# Organize the data for abundance plots
+tax2$pathogenic <- NA
+for (i in 1:nrow(tax)) {
+  # Identify and label pathogens
+  tax2$pathogenic[tax2$Species == tax$Species[i]] <- "Pathogenic"
+}
+
+# Label non-pathogenic taxa
+tax2$pathogenic[is.na(tax2$pathogenic)] <- "Non-pathogenic"
+
+# Update the taxonomy table
+tax2 = phyloseq::tax_table(as.matrix(tax2))
+phyloseq::tax_table(pathogen.rel2) <- tax2
+
+pathogen.melt2 <- psmelt(pathogen.rel2) # melt into data frame
+
+# Group by variables needed for bar plot
+pathogen.melt2 <- pathogen.melt2 %>%
+  group_by(sample.ID, cover_crop, pathogenic) %>%
+  summarise(Abundance = sum(Abundance))
+
+# Relative abundance bar plot
+Fig6_B <-
+  ggplot(pathogen.melt2, aes(x = sample.ID, y = Abundance, fill = pathogenic)) + 
+  geom_bar(stat = "identity", aes(fill = pathogenic)) + 
+  labs(x = "", y= "Abundance (%)", tag = "B") +
+  facet_wrap(~cover_crop, scales = "free_x", nrow = 1,
+             labeller = labeller(cover_crop = label_wrap_gen(width = 10))) +
+  theme_classic() +
+  scale_fill_manual(values = c("#9EDAFA", "#FD8A8B")) + 
+  scale_y_continuous(limits = c(0,110), expand = c(0,0)) +
+  theme(plot.tag = element_text(size = 14, family = "sans", face = "bold"),
+        plot.tag.position = c(0.02, 0.95),
+        axis.title.y = element_text(size = 10, family = "sans", face = "bold"), 
+        axis.text.y = element_text(size = 7, family = "sans"),
+        axis.text.x  = element_text(size = 2, angle = 45),
+        axis.line.y = element_line(linewidth = 0.2),
+        axis.line.x = element_line(linewidth = 0.2),
+        axis.ticks.x = element_line(linewidth = 0.2),
+        legend.text = element_text(size = 7, family = "sans", face = "bold"),
+        legend.title = element_blank(),
+        legend.key.height = unit(0.32, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"),
+        panel.background = element_rect(fill = "transparent"),
+        strip.text.x = element_text(size = 6, family = "sans", face = "bold"),
+        strip.background = element_blank(),
+        panel.spacing = unit(0.15, "lines"),
+        plot.background = element_blank(),
+        plot.margin = unit(c(0.2,0.1,0.2,0.2), "cm")) #top, right, bottom, left
+
+# Layer cover crop icons on top of abundance bar plot
+FIG6B <-
+  cowplot::ggdraw(Fig6_B) +
+  cowplot::draw_plot(icons,
+                     x = 0,
+                     y = 0,
+                     width = 1.02,
+                     height = 0.99)
+
+```
+
+```{r path_abundance4, message = FALSE, warning = FALSE, fig.cap = "(A) Stacked bar plot of the relative abundance of fungal vine pathogens from various taxonomic levels (family, genus, species) for each cover crop. (B) Bar plot comparing the relative abundances of pathogenic and non-pathogenic fungal species in each sample, grouped by cover crop.", fig.width = 6.86, fig.height = 7.5}
+
+# Combine all bar plots
+FIG6 <- cowplot::plot_grid(FIG6A, FIG6B, ncol = 1)
+FIG6
+
+```
+
+There is significantly more Nectriaceae present in all samples compared to other pathogenic taxa. This can be partially attributed to the Nectriaceae family being a higher level of taxonomic organization under which there are 69 genera and many species. 
+
+\newpage
+# References
+
